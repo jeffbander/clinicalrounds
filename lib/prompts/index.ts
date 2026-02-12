@@ -1,0 +1,12 @@
+export { INTAKE_PARSER_PROMPT } from './intake-parser';
+export { ATTENDING_PROMPT } from './attending';
+export { CARDIOLOGIST_PROMPT } from './cardiologist';
+export { PULMONOLOGIST_PROMPT } from './pulmonologist';
+export { NEPHROLOGIST_PROMPT } from './nephrologist';
+export { HEPATOLOGIST_PROMPT } from './hepatologist';
+export { HEMATOLOGIST_PROMPT } from './hematologist';
+export { ID_SPECIALIST_PROMPT } from './id-specialist';
+export { RADIOLOGIST_PROMPT } from './radiologist';
+export { PHARMACIST_PROMPT } from './pharmacist';
+export { ENDOCRINOLOGIST_PROMPT } from './endocrinologist';
+export { NEUROLOGIST_PROMPT } from './neurologist';
