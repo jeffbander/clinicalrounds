@@ -4,6 +4,7 @@ import { useReducer, useCallback, useState } from 'react';
 import { PasteBox } from '@/components/PasteBox';
 import { SpecialistGrid } from '@/components/SpecialistGrid';
 import { TeamDiscussion } from '@/components/TeamDiscussion';
+import { ConferenceView } from '@/components/ConferenceView';
 import { AssessmentPlan } from '@/components/AssessmentPlan';
 import { PostSynthesisQuestions } from '@/components/PostSynthesisQuestions';
 import { ScoringSystemsSidebar } from '@/components/ScoringSystemsSidebar';
@@ -12,7 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
 import { Stethoscope, RotateCcw, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { formatCost, generateId } from '@/lib/utils';
+import { cn, formatCost, generateId } from '@/lib/utils';
 import type {
   CaseState,
   AnalyzeResponse,
@@ -127,6 +128,14 @@ function deriveStatuses(analyses: Record<string, SpecialistAnalysis>): Record<st
     statuses[specialist] = hasCritical ? 'critical' : 'complete';
   }
   return statuses;
+}
+
+function estimateTotalExchanges(analyses: Record<string, SpecialistAnalysis>): number {
+  let count = 0;
+  for (const a of Object.values(analyses)) {
+    count += a.cross_consults.length + a.questions_for_team.length;
+  }
+  return Math.max(count, 1);
 }
 
 function caseReducer(state: CaseState, action: Action): CaseState {
@@ -614,20 +623,26 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Specialist Grid */}
+              {/* Specialist Grid — collapses during cross-consulting */}
               {state.step !== 'parsing' && (
-                <SpecialistGrid
-                  analyses={state.specialistAnalyses}
-                  statuses={state.specialistStatuses}
-                />
+                <div className={cn(
+                  'transition-all duration-500',
+                  state.step === 'cross_consulting' && 'max-h-0 overflow-hidden opacity-0'
+                )}>
+                  <SpecialistGrid
+                    analyses={state.specialistAnalyses}
+                    statuses={state.specialistStatuses}
+                  />
+                </div>
               )}
 
-              {/* Cross-consulting indicator */}
+              {/* Cross-Consultation Conference View */}
               {state.step === 'cross_consulting' && (
-                <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                  Specialists conferring...
-                </div>
+                <ConferenceView
+                  exchanges={state.crossConsultMessages}
+                  isActive={state.step === 'cross_consulting'}
+                  totalExpected={estimateTotalExchanges(state.specialistAnalyses)}
+                />
               )}
 
               {/* Team Discussion */}
