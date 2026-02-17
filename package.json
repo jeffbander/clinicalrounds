@@ -1,6 +1,30 @@
 {
   "name": "clinicalrounds",
   "version": "0.1.0",
+  "description": "AI-powered multidisciplinary clinical case review. Paste a clinical note, get instant analysis from 9 AI specialist agents with cross-consultation and a unified Assessment & Plan.",
+  "author": "Agentic Laboratory at Mount Sinai West",
+  "license": "MIT",
+  "homepage": "https://github.com/jeffbander/clinicalrounds#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jeffbander/clinicalrounds.git"
+  },
+  "bugs": {
+    "url": "https://github.com/jeffbander/clinicalrounds/issues"
+  },
+  "keywords": [
+    "clinical-reasoning",
+    "multidisciplinary",
+    "ai-agents",
+    "claude",
+    "anthropic",
+    "medical",
+    "hospitalist",
+    "case-review",
+    "multi-agent",
+    "nextjs",
+    "clinical-decision-support"
+  ],
   "private": true,
   "scripts": {
     "dev": "next dev",
