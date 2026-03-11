@@ -3,11 +3,12 @@
 import { SpecialistCard } from './SpecialistCard';
 import { Progress } from '@/components/ui/progress';
 import { Specialist, SPECIALIST_CONFIG } from '@/lib/types';
-import type { SpecialistAnalysis, AnalysisStatus } from '@/lib/types';
+import type { SpecialistAnalysis, AnalysisStatus, SpecialistSearchActivity } from '@/lib/types';
 
 interface SpecialistGridProps {
   analyses: Record<string, SpecialistAnalysis>;
   statuses: Record<string, AnalysisStatus>;
+  searchActivities?: SpecialistSearchActivity[];
 }
 
 const SPECIALIST_ORDER: Specialist[] = [
@@ -20,9 +21,11 @@ const SPECIALIST_ORDER: Specialist[] = [
   Specialist.ID_SPECIALIST,
   Specialist.RADIOLOGIST,
   Specialist.PHARMACIST,
+  Specialist.ENDOCRINOLOGIST,
+  Specialist.NEUROLOGIST,
 ];
 
-export function SpecialistGrid({ analyses, statuses }: SpecialistGridProps) {
+export function SpecialistGrid({ analyses, statuses, searchActivities }: SpecialistGridProps) {
   const total = SPECIALIST_ORDER.length;
   const completed = SPECIALIST_ORDER.filter(
     (s) => statuses[s] === 'complete' || statuses[s] === 'critical'
@@ -34,18 +37,24 @@ export function SpecialistGrid({ analyses, statuses }: SpecialistGridProps) {
     <div className="space-y-4">
       {/* Progress header */}
       {isActive && (
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between text-xs text-muted-foreground">
-            <span>Specialist analysis</span>
-            <span>{completed}/{total} complete</span>
+        <div className="space-y-2 animate-fade-in">
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center gap-2">
+              <span className="relative flex size-2">
+                <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary opacity-75" />
+                <span className="relative inline-flex size-2 rounded-full bg-primary" />
+              </span>
+              <span className="font-medium text-foreground">Specialists analyzing</span>
+            </div>
+            <span className="text-muted-foreground font-mono">{completed}/{total}</span>
           </div>
           <Progress value={progressPercent} className="h-1.5" />
         </div>
       )}
 
-      {/* 3x3 Grid */}
+      {/* Grid */}
       <div
-        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"
+        className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 stagger-children"
         role="region"
         aria-label="Specialist analyses"
       >
@@ -53,6 +62,9 @@ export function SpecialistGrid({ analyses, statuses }: SpecialistGridProps) {
           const config = SPECIALIST_CONFIG[specialist];
           const status = statuses[specialist] || 'waiting';
           const analysis = analyses[specialist];
+          const latestSearch = searchActivities
+            ?.filter((a) => a.specialist === specialist)
+            .sort((a, b) => b.timestamp - a.timestamp)[0];
 
           return (
             <SpecialistCard
@@ -61,6 +73,8 @@ export function SpecialistGrid({ analyses, statuses }: SpecialistGridProps) {
               icon={config.icon}
               status={status}
               analysis={analysis}
+              searchActivity={latestSearch}
+              specialistKey={specialist}
             />
           );
         })}

@@ -15,6 +15,7 @@ import type {
   SpecialistAnalysis,
   AnalysisStatus,
 } from '@/lib/types';
+import { caseReducer as realReducer, initialState as realInitialState } from '@/lib/reducer';
 import { createMockAnalyses, MOCK_INTAKE_DATA, MOCK_DISCUSSION_MESSAGES, MOCK_CROSS_CONSULT_MESSAGES } from '../../fixtures/clinical-data';
 
 // Replicate the reducer logic for testing since it's not exported
@@ -42,6 +43,10 @@ const initialState: CaseState = {
   specialistAnalyses: {},
   specialistStatuses: {},
   crossConsultMessages: [],
+  crossConsultRounds: [],
+  currentRound: 0,
+  maxRounds: 3,
+  chatHistory: [],
   discussionThread: [],
   userAnswers: {},
   pendingQuestions: [],
@@ -51,6 +56,8 @@ const initialState: CaseState = {
   scoringSystems: [],
   tokenUsage: { input: 0, output: 0, estimatedCost: 0 },
   error: null,
+  webSearchEnabled: false,
+  searchActivities: [],
 };
 
 function extractQuestions(analyses: Record<string, SpecialistAnalysis>) {
@@ -487,5 +494,38 @@ describe('caseReducer', () => {
       expect(state.step).toBe('complete');
       expect(state.isStreaming).toBe(false);
     });
+  });
+});
+
+// ─── Web Search reducer tests (using real reducer) ──────────────────────────
+
+describe('caseReducer web search actions', () => {
+  it('TOGGLE_WEB_SEARCH should toggle webSearchEnabled', () => {
+    let state = realReducer(realInitialState, { type: 'TOGGLE_WEB_SEARCH', enabled: true });
+    expect(state.webSearchEnabled).toBe(true);
+
+    state = realReducer(state, { type: 'TOGGLE_WEB_SEARCH', enabled: false });
+    expect(state.webSearchEnabled).toBe(false);
+  });
+
+  it('SPECIALIST_SEARCH should append to searchActivities', () => {
+    const activity = {
+      specialist: 'cardiologist',
+      query: 'ACC heart failure guidelines',
+      citations: [],
+      timestamp: Date.now(),
+    };
+
+    const state = realReducer(realInitialState, { type: 'SPECIALIST_SEARCH', activity });
+    expect(state.searchActivities).toHaveLength(1);
+    expect(state.searchActivities[0].query).toBe('ACC heart failure guidelines');
+  });
+
+  it('START_ANALYSIS should preserve webSearchEnabled', () => {
+    let state = realReducer(realInitialState, { type: 'TOGGLE_WEB_SEARCH', enabled: true });
+    state = realReducer(state, { type: 'START_ANALYSIS', rawNotes: 'test notes' });
+
+    expect(state.webSearchEnabled).toBe(true);
+    expect(state.searchActivities).toHaveLength(0); // reset
   });
 });

@@ -53,6 +53,19 @@ export interface ScoringSystem {
   interpretation: string;
 }
 
+export interface WebSearchCitation {
+  title: string;
+  url: string;
+  page_age?: string;
+}
+
+export interface SpecialistSearchActivity {
+  specialist: string;
+  query: string;
+  citations: WebSearchCitation[];
+  timestamp: number;
+}
+
 export interface SpecialistAnalysis {
   specialist: Specialist;
   findings: string[];
@@ -62,6 +75,7 @@ export interface SpecialistAnalysis {
   questions_for_team: string[];
   cross_consults: CrossConsultRequest[];
   scoring_systems_applied: ScoringSystem[];
+  web_search_citations?: WebSearchCitation[];
 }
 
 export interface IntakeData {
@@ -131,13 +145,77 @@ export interface UserQuestion {
   answer?: string | null;
 }
 
+// ─── Temporal / Encounter Types ───────────────────────────────────────────────
+
+export interface ClinicalEncounter {
+  id: string;
+  date: string;
+  encounter_type: string;
+  labs: IntakeData['labs'];
+  vitals: IntakeData['vitals'];
+  imaging: IntakeData['imaging'];
+  notes: string;
+  procedures_consults: string[];
+}
+
+export interface TemporalIntakeData extends IntakeData {
+  encounters: ClinicalEncounter[];
+  timeline_summary: string;
+  date_range: { start: string; end: string };
+}
+
+// ─── Multi-Round Cross-Consult Types ─────────────────────────────────────────
+
+export interface CrossConsultRound {
+  round: number;
+  messages: CrossConsultMessage[];
+}
+
+export interface CrossConsultMessageV2 extends CrossConsultMessage {
+  round: number;
+  response_questions?: string[];
+  thread_id?: string;
+}
+
+// ─── Specialist Chat Types ───────────────────────────────────────────────────
+
+export interface SpecialistChatMessage {
+  id: string;
+  role: 'user' | 'specialist';
+  specialist?: Specialist;
+  content: string;
+  timestamp: number;
+  triggered_discussions?: CrossConsultMessage[];
+}
+
+// ─── Discussion Pause / User Steering Types ──────────────────────────────────
+
+export interface DiscussionPauseState {
+  roundsCompleted: number;
+  pendingQuestions: string[];
+  canContinue: boolean;
+}
+
+export interface UserSteeringAction {
+  type: 'continue' | 'ask_specialist' | 'inject_hypothesis' | 'proceed_to_synthesis';
+  specialist?: Specialist;
+  question?: string;
+  additionalRounds?: number;
+}
+
+// ─── Case State ──────────────────────────────────────────────────────────────
+
 export interface CaseState {
-  step: 'idle' | 'parsing' | 'analyzing' | 'cross_consulting' | 'synthesizing' | 'complete';
+  step: 'idle' | 'parsing' | 'analyzing' | 'cross_consulting' | 'synthesizing' | 'complete' | 'discussion_paused' | 'chatting';
   rawNotes: string;
   intakeData: IntakeData | null;
   specialistAnalyses: Record<string, SpecialistAnalysis>;
   specialistStatuses: Record<string, AnalysisStatus>;
   crossConsultMessages: CrossConsultMessage[];
+  crossConsultRounds: CrossConsultRound[];
+  currentRound: number;
+  maxRounds: number;
+  chatHistory: SpecialistChatMessage[];
   discussionThread: DiscussionMessage[];
   userAnswers: Record<string, string | null>;
   pendingQuestions: UserQuestion[];
@@ -147,11 +225,14 @@ export interface CaseState {
   scoringSystems: ScoringSystem[];
   tokenUsage: { input: number; output: number; estimatedCost: number };
   error: string | null;
+  webSearchEnabled: boolean;
+  searchActivities: SpecialistSearchActivity[];
 }
 
 // API request/response types
 export interface AnalyzeRequest {
   rawNotes: string;
+  webSearchEnabled?: boolean;
 }
 
 export interface AnalyzeResponse {
@@ -194,8 +275,55 @@ export type AnalyzeSSEEvent =
   | { type: 'intake_complete'; intakeData: IntakeData }
   | { type: 'specialist_complete'; specialist: Specialist; analysis: SpecialistAnalysis; discussionMessage: DiscussionMessage }
   | { type: 'specialist_error'; specialist: Specialist; error: string }
+  | { type: 'specialist_search'; specialist: string; query: string }
   | { type: 'analyze_done'; totalSpecialists: number; completedCount: number };
 
 export type CrossConsultSSEEvent =
   | { type: 'cross_consult_message'; message: CrossConsultMessage; discussionMessage: DiscussionMessage }
   | { type: 'cross_consult_done'; totalExchanges: number; completedCount: number };
+
+// ─── Multi-Round Cross-Consult SSE Events ────────────────────────────────────
+
+export type MultiRoundCrossConsultSSEEvent =
+  | { type: 'round_start'; round: number; totalRounds: number }
+  | { type: 'cross_consult_message'; message: CrossConsultMessageV2; discussionMessage: DiscussionMessage; round: number }
+  | { type: 'round_done'; round: number; messagesInRound: number }
+  | { type: 'all_rounds_complete'; totalRounds: number; totalMessages: number }
+  | { type: 'discussion_paused'; pauseState: DiscussionPauseState };
+
+// ─── Specialist Chat SSE Events ──────────────────────────────────────────────
+
+export type SpecialistChatSSEEvent =
+  | { type: 'chat_response'; message: SpecialistChatMessage }
+  | { type: 'chat_triggered_discussion'; discussions: CrossConsultMessage[] }
+  | { type: 'chat_done' };
+
+// ─── Append Notes API Types ──────────────────────────────────────────────────
+
+export interface AppendNotesRequest {
+  additionalNotes: string;
+  existingIntakeData: IntakeData;
+  existingAnalyses: Record<string, SpecialistAnalysis>;
+}
+
+export interface AppendNotesResponse {
+  updatedIntakeData: IntakeData;
+  updatedAnalyses: Record<string, SpecialistAnalysis>;
+  discussionMessages: DiscussionMessage[];
+}
+
+// ─── Specialist Chat API Types ───────────────────────────────────────────────
+
+export interface SpecialistChatRequest {
+  specialist: Specialist;
+  message: string;
+  chatHistory: SpecialistChatMessage[];
+  intakeData: IntakeData;
+  analyses: Record<string, SpecialistAnalysis>;
+  crossConsults: CrossConsultMessage[];
+}
+
+export interface SpecialistChatResponse {
+  response: SpecialistChatMessage;
+  triggeredDiscussions?: CrossConsultMessage[];
+}

@@ -1,6 +1,7 @@
 import { Specialist } from '@/lib/types';
 import type {
   IntakeData,
+  TemporalIntakeData,
   SpecialistAnalysis,
   CrossConsultMessage,
   DiscussionMessage,
@@ -12,7 +13,7 @@ import type {
   AdditionalDataResponse,
 } from '@/lib/types';
 
-export const MOCK_INTAKE_DATA: IntakeData = {
+export const MOCK_INTAKE_DATA: TemporalIntakeData = {
   demographics: { age: 68, sex: 'M', weight: 82, height: 175 },
   chief_complaint: 'Acute dyspnea and chest tightness',
   hpi: '68M with history of CHF (EF 30%), CKD stage 3b, presents with 3 days of worsening dyspnea on exertion, orthopnea (3-pillow), and lower extremity edema.',
@@ -52,6 +53,9 @@ export const MOCK_INTAKE_DATA: IntakeData = {
   procedures_consults: ['Cardiology consulted'],
   missing_data: ['Echocardiogram pending', 'Iron studies pending'],
   raw_text: 'Admitted for acute decompensated heart failure...',
+  encounters: [],
+  timeline_summary: '',
+  date_range: { start: '', end: '' },
 };
 
 export function createMockSpecialistAnalysis(specialist: Specialist, options?: {

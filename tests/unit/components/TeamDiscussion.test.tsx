@@ -36,7 +36,7 @@ describe('TeamDiscussion', () => {
   it('should show message count', () => {
     render(<TeamDiscussion messages={MOCK_DISCUSSION_MESSAGES} />);
 
-    expect(screen.getByText(`(${MOCK_DISCUSSION_MESSAGES.length} messages)`)).toBeInTheDocument();
+    expect(screen.getByText(`${MOCK_DISCUSSION_MESSAGES.length}`)).toBeInTheDocument();
   });
 
   it('should show timestamps', () => {

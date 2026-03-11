@@ -28,7 +28,7 @@ vi.mock('@anthropic-ai/sdk', () => {
 });
 
 // Import after mocking
-import { runIntake, runSpecialists, runCrossConsult, runAdditionalData, runSynthesis } from '@/lib/orchestrator';
+import { runIntake, runSpecialists, runSpecialistsStreaming, runCrossConsult, runAdditionalData, runSynthesis } from '@/lib/orchestrator';
 
 describe('orchestrator', () => {
   beforeEach(() => {
@@ -428,6 +428,119 @@ describe('orchestrator', () => {
       }
 
       expect(collected).toEqual(['Hello', ' World']);
+    });
+  });
+
+  describe('web search integration', () => {
+    it('should pass web_search tool when webSearchEnabled is true', async () => {
+      mockCreate.mockResolvedValue({
+        content: [{ type: 'text', text: JSON.stringify(MOCK_CLAUDE_TEXT_RESPONSE.content[0].type === 'text' ? JSON.parse(MOCK_CLAUDE_TEXT_RESPONSE.content[0].text) : {}) }],
+      });
+
+      const onResult = vi.fn();
+      const onError = vi.fn();
+
+      await runSpecialistsStreaming(MOCK_INTAKE_DATA, onResult, onError, { webSearchEnabled: true });
+
+      for (const call of mockCreate.mock.calls) {
+        const params = call[0] as { tools?: unknown[] };
+        expect(params.tools).toBeDefined();
+        expect(params.tools).toHaveLength(1);
+        expect((params.tools![0] as { type: string }).type).toBe('web_search_20250305');
+      }
+    });
+
+    it('should NOT pass tools when webSearchEnabled is false', async () => {
+      mockCreate.mockResolvedValue(MOCK_CLAUDE_TEXT_RESPONSE);
+
+      const onResult = vi.fn();
+      const onError = vi.fn();
+
+      await runSpecialistsStreaming(MOCK_INTAKE_DATA, onResult, onError, { webSearchEnabled: false });
+
+      for (const call of mockCreate.mock.calls) {
+        const params = call[0] as { tools?: unknown[] };
+        expect(params.tools).toBeUndefined();
+      }
+    });
+
+    it('should NOT pass tools when no options provided', async () => {
+      mockCreate.mockResolvedValue(MOCK_CLAUDE_TEXT_RESPONSE);
+
+      const onResult = vi.fn();
+      const onError = vi.fn();
+
+      await runSpecialistsStreaming(MOCK_INTAKE_DATA, onResult, onError);
+
+      for (const call of mockCreate.mock.calls) {
+        const params = call[0] as { tools?: unknown[] };
+        expect(params.tools).toBeUndefined();
+      }
+    });
+
+    it('should extract citations from web_search_tool_result blocks', async () => {
+      mockCreate.mockResolvedValue({
+        content: [
+          {
+            type: 'server_tool_use',
+            id: 'srvtoolu_01',
+            name: 'web_search',
+            input: { query: 'ACC heart failure guidelines 2024' },
+          },
+          {
+            type: 'web_search_tool_result',
+            tool_use_id: 'srvtoolu_01',
+            content: [
+              {
+                type: 'web_search_result',
+                url: 'https://acc.org/guidelines/hf-2024',
+                title: 'ACC/AHA HF Guidelines 2024',
+                page_age: '3 months ago',
+              },
+              {
+                type: 'web_search_result',
+                url: 'https://pubmed.ncbi.nlm.nih.gov/12345',
+                title: 'SGLT2i in HFpEF Meta-Analysis',
+              },
+            ],
+          },
+          {
+            type: 'text',
+            text: JSON.stringify({
+              findings: ['Heart failure with reduced EF'],
+              concerns: [],
+              recommendations: [],
+              questions_for_user: [],
+              questions_for_team: [],
+              cross_consults: [],
+              scoring_systems_applied: [],
+            }),
+          },
+        ],
+      });
+
+      const onResult = vi.fn();
+      const onError = vi.fn();
+      const onSearch = vi.fn();
+
+      await runSpecialistsStreaming(MOCK_INTAKE_DATA, onResult, onError, {
+        webSearchEnabled: true,
+        onSearch,
+      });
+
+      // At least one specialist should have citations
+      const callsWithCitations = onResult.mock.calls.filter(
+        (call) => call[1].web_search_citations && call[1].web_search_citations.length > 0
+      );
+      expect(callsWithCitations.length).toBeGreaterThan(0);
+
+      const citedAnalysis = callsWithCitations[0][1];
+      expect(citedAnalysis.web_search_citations).toHaveLength(2);
+      expect(citedAnalysis.web_search_citations[0].title).toBe('ACC/AHA HF Guidelines 2024');
+      expect(citedAnalysis.web_search_citations[0].url).toBe('https://acc.org/guidelines/hf-2024');
+
+      // onSearch should have been called with the query
+      expect(onSearch).toHaveBeenCalled();
     });
   });
 });

@@ -3,8 +3,8 @@ import { runIntake, runSpecialistsStreaming } from '@/lib/orchestrator';
 import type { AnalyzeRequest, AnalyzeSSEEvent, DiscussionMessage } from '@/lib/types';
 import { Specialist, SPECIALIST_CONFIG } from '@/lib/types';
 
-// 9 parallel specialist Claude calls need extended timeout
-export const maxDuration = 120;
+// 9 parallel specialist Claude calls need extended timeout (extra buffer for web search)
+export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
   const body: AnalyzeRequest = await request.json();
@@ -16,6 +16,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const webSearchEnabled = body.webSearchEnabled ?? false;
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -49,6 +50,12 @@ export async function POST(request: NextRequest) {
           (specialist, error) => {
             completedCount++;
             send({ type: 'specialist_error', specialist, error });
+          },
+          {
+            webSearchEnabled,
+            onSearch: (specialist, query) => {
+              send({ type: 'specialist_search', specialist, query });
+            },
           }
         );
 

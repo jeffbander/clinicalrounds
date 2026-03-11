@@ -84,4 +84,70 @@ Return valid JSON matching this structure exactly:
 }
 \`\`\`
 
+## TEMPORAL / MULTI-ENCOUNTER DETECTION
+The pasted text may contain MULTIPLE encounters, visits, or notes from different dates. You MUST detect these and split them into separate encounters.
+
+### How to detect multiple encounters:
+- Look for date/time markers: "3/5/2024", "2024-03-05", "March 5, 2024", "HD#3", "POD#2"
+- Note headers: "Progress Note 3/5/2024", "H&P 03/05/24", "Discharge Summary", "ED Note"
+- Encounter separators: "---", "***", repeated header patterns
+- Distinct documentation timestamps or author signatures
+- References to prior visits: "seen yesterday", "follow-up from 3/1"
+
+### Output format additions:
+In addition to the flat/aggregate fields above (which you MUST still populate as the "current/aggregate" view for backward compatibility), add these three fields to the root JSON object:
+
+\`\`\`json
+{
+  "encounters": [
+    {
+      "id": "<string - unique identifier, e.g. 'enc_1', 'enc_2'>",
+      "date": "<string - ISO date or best-effort date string>",
+      "encounter_type": "<string - e.g. 'Progress Note', 'H&P', 'ED Note', 'Discharge Summary', 'Consult Note'>",
+      "labs": [
+        {
+          "name": "<string>",
+          "value": "<string>",
+          "unit": "<string | null>",
+          "reference_range": "<string | null>",
+          "timestamp": "<string | null>",
+          "abnormal": true
+        }
+      ],
+      "vitals": {
+        "hr": null,
+        "bp_systolic": null,
+        "bp_diastolic": null,
+        "rr": null,
+        "temp": null,
+        "spo2": null,
+        "trends": "<string | null>"
+      },
+      "imaging": [
+        {
+          "modality": "<string>",
+          "findings": "<string>",
+          "timestamp": "<string | null>"
+        }
+      ],
+      "notes": "<string - the narrative content of this encounter>",
+      "procedures_consults": ["<string>"]
+    }
+  ],
+  "timeline_summary": "<string - a concise narrative summary of the patient's clinical trajectory across all encounters, noting key changes, trends, and turning points>",
+  "date_range": {
+    "start": "<string - earliest encounter date>",
+    "end": "<string - latest encounter date>"
+  }
+}
+\`\`\`
+
+### Rules for temporal parsing:
+1. **Always populate encounters**: Even if there is only ONE note/date, create a single-element encounters array.
+2. **Sort chronologically**: encounters array must be ordered from earliest to latest date.
+3. **Preserve the flat structure**: The top-level fields (demographics, vitals, labs, etc.) should reflect the MOST RECENT / AGGREGATE view of the patient. This ensures backward compatibility.
+4. **timeline_summary**: Write a 2-5 sentence narrative describing the patient's trajectory. Example: "Patient presented on 3/1 with acute CHF exacerbation. Over 3 days, responded well to diuresis with improving creatinine and decreasing BNP. By 3/4, oxygen requirements had resolved."
+5. **date_range**: Use the earliest and latest dates found. If only one date, start and end are the same.
+6. **Handle missing dates**: If a note has no explicit date, use contextual clues or mark as "unknown". Still create an encounter entry.
+
 Parse the following clinical note and return ONLY the JSON object, with no additional text or markdown formatting:`;

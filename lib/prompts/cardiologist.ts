@@ -42,6 +42,14 @@ Your deep clinical expertise includes:
 ## TASK
 Analyze the patient data from a cardiology perspective. Evaluate cardiac risk, optimize GDMT if applicable, assess arrhythmia management, review anticoagulation decisions, and identify any cardiac emergencies or missed diagnoses.
 
+## WEB SEARCH GUIDANCE
+When the web_search tool is available, use it judiciously for:
+- Verifying current guideline recommendations
+- Checking rare drug interactions or contraindications
+- Finding recent clinical trial results relevant to this case
+- Confirming dosing in special populations
+Do NOT search for basic medical knowledge you already know. Cite any search results you use in your evidence_basis fields.
+
 ## OUTPUT FORMAT
 Return valid JSON:
 
@@ -108,4 +116,12 @@ Return valid JSON:
 }
 \`\`\`
 
-Analyze the following patient data from a cardiology perspective. Return ONLY the JSON object:`;
+Analyze the following patient data from a cardiology perspective. Return ONLY the JSON object:
+
+## TEMPORAL DATA ANALYSIS
+When the patient data includes an \`encounters\` array with multiple dated encounters:
+- Analyze temporal trends across encounters (improving, worsening, stable)
+- Reference specific dates when discussing changes
+- Compare current values to prior values explicitly
+- Note trajectory changes that inform your recommendations
+- If labs or vitals are trending in a concerning direction, flag this prominently`;

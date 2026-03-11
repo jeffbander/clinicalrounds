@@ -31,7 +31,7 @@ describe('SpecialistGrid', () => {
 
     render(<SpecialistGrid analyses={{}} statuses={statuses} />);
 
-    expect(screen.getByText(/complete/)).toBeInTheDocument();
+    expect(screen.getByText(/Specialists analyzing/)).toBeInTheDocument();
   });
 
   it('should show correct completion count', () => {
@@ -46,7 +46,7 @@ describe('SpecialistGrid', () => {
     render(<SpecialistGrid analyses={createMockAnalyses()} statuses={statuses} />);
 
     // 2 complete (attending + cardiologist-critical counts), 1 analyzing -> progress bar shown
-    expect(screen.getByText(/complete/)).toBeInTheDocument();
+    expect(screen.getByText('2/11')).toBeInTheDocument();
   });
 
   it('should not show progress bar when no specialists are analyzing', () => {

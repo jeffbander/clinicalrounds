@@ -80,7 +80,7 @@ describe('SpecialistCard', () => {
 
     expect(screen.getByText('Recommendations')).toBeInTheDocument();
     expect(screen.getByText('Recommendation 1 from cardiologist')).toBeInTheDocument();
-    expect(screen.getByText('(ACC/AHA 2022)')).toBeInTheDocument();  // rationale
+    expect(screen.getByText(/— ACC\/AHA 2022/)).toBeInTheDocument();  // rationale
   });
 
   it('should show critical concern styling', async () => {
@@ -114,7 +114,7 @@ describe('SpecialistCard', () => {
     const trigger = screen.getByRole('button');
     await user.click(trigger);
 
-    expect(screen.getByText('Analyzing...')).toBeInTheDocument();
+    expect(screen.getAllByText('Analyzing...').length).toBeGreaterThanOrEqual(1);
   });
 
   it('should toggle open state on click', async () => {

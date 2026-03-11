@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Specialist, SPECIALIST_CONFIG } from './types';
-import type { IntakeData, SpecialistAnalysis, CrossConsultMessage } from './types';
+import type { IntakeData, SpecialistAnalysis, CrossConsultMessage, CrossConsultRound, TemporalIntakeData, SpecialistChatMessage, WebSearchCitation } from './types';
 import { INTAKE_PARSER_PROMPT } from './prompts/intake-parser';
 import { ATTENDING_PROMPT } from './prompts/attending';
 import { CARDIOLOGIST_PROMPT } from './prompts/cardiologist';
@@ -33,6 +33,19 @@ const SPECIALIST_PROMPTS: Record<Specialist, string> = {
 const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
 const OPUS_MODEL = 'claude-opus-4-6';
 
+const WEB_SEARCH_TOOL = {
+  type: 'web_search_20250305' as const,
+  name: 'web_search' as const,
+  max_uses: 3,
+  allowed_domains: [
+    'pubmed.ncbi.nlm.nih.gov', 'ncbi.nlm.nih.gov', 'nih.gov', 'who.int', 'cdc.gov',
+    'acc.org', 'heart.org', 'idsociety.org', 'ashp.org', 'kidney.org', 'aasld.org',
+    'thoracic.org', 'aan.com', 'endocrine.org', 'hematology.org', 'acr.org',
+    'nejm.org', 'thelancet.com', 'jamanetwork.com', 'bmj.com', 'cochranelibrary.com',
+    'nice.org.uk', 'uptodate.com',
+  ],
+};
+
 function extractJSON(text: string): string | null {
   const jsonStart = text.indexOf('{');
   if (jsonStart === -1) return null;
@@ -54,7 +67,7 @@ function extractJSON(text: string): string | null {
   return null;
 }
 
-export async function runIntake(rawText: string): Promise<IntakeData> {
+export async function runIntake(rawText: string): Promise<TemporalIntakeData> {
   const response = await anthropic.messages.create({
     model: SONNET_MODEL,
     max_tokens: 8192,
@@ -66,24 +79,89 @@ export async function runIntake(rawText: string): Promise<IntakeData> {
   const jsonStr = extractJSON(text);
   if (!jsonStr) throw new Error('Failed to parse intake data');
 
-  let parsed: IntakeData;
+  let parsed: TemporalIntakeData;
   try {
-    parsed = JSON.parse(jsonStr) as IntakeData;
+    parsed = JSON.parse(jsonStr) as TemporalIntakeData;
   } catch {
     throw new Error('Failed to parse intake data: invalid JSON');
   }
   parsed.raw_text = rawText;
+
+  // Ensure temporal fields have defaults for backward compatibility
+  if (!parsed.encounters) parsed.encounters = [];
+  if (!parsed.timeline_summary) parsed.timeline_summary = '';
+  if (!parsed.date_range) parsed.date_range = { start: '', end: '' };
+
   return parsed;
+}
+
+export async function runIncrementalIntake(
+  newRawText: string,
+  existingIntake: IntakeData
+): Promise<TemporalIntakeData> {
+  const incrementalPrompt = `You are parsing ADDITIONAL clinical notes to merge with an existing patient record.
+
+EXISTING PATIENT DATA (do NOT re-parse this, it is already structured):
+${JSON.stringify(existingIntake, null, 2)}
+
+YOUR TASK:
+1. Parse ONLY the NEW notes below into structured encounter data.
+2. Merge the new encounters with any existing encounters.
+3. Update the aggregate/flat fields (demographics, vitals, labs, etc.) to reflect the MOST RECENT values from all encounters combined.
+4. Update the timeline_summary to incorporate the new data.
+5. Update the date_range to span all encounters.
+
+Return the COMPLETE updated TemporalIntakeData JSON object (existing + new data merged).
+The output format is the same as the intake parser: all the flat fields plus encounters, timeline_summary, and date_range.
+
+Return ONLY the JSON object, with no additional text or markdown formatting.
+
+NEW NOTES TO PARSE AND MERGE:`;
+
+  const response = await anthropic.messages.create({
+    model: SONNET_MODEL,
+    max_tokens: 8192,
+    system: incrementalPrompt,
+    messages: [{ role: 'user', content: newRawText }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const jsonStr = extractJSON(text);
+  if (!jsonStr) throw new Error('Failed to parse incremental intake data');
+
+  let parsed: TemporalIntakeData;
+  try {
+    parsed = JSON.parse(jsonStr) as TemporalIntakeData;
+  } catch {
+    throw new Error('Failed to parse incremental intake data: invalid JSON');
+  }
+
+  // Preserve the combined raw text
+  parsed.raw_text = (existingIntake.raw_text || '') + '\n\n---\n\n' + newRawText;
+
+  // Ensure temporal fields have defaults
+  if (!parsed.encounters) parsed.encounters = [];
+  if (!parsed.timeline_summary) parsed.timeline_summary = '';
+  if (!parsed.date_range) parsed.date_range = { start: '', end: '' };
+
+  return parsed;
+}
+
+interface WebSearchOptions {
+  webSearchEnabled?: boolean;
+  onSearch?: (specialist: string, query: string) => void;
 }
 
 async function runSingleSpecialist(
   specialist: Specialist,
-  intakeData: IntakeData
+  intakeData: IntakeData,
+  options?: WebSearchOptions
 ): Promise<SpecialistAnalysis> {
   const config = SPECIALIST_CONFIG[specialist];
   const model = config.model === 'opus' ? OPUS_MODEL : SONNET_MODEL;
 
-  const response = await anthropic.messages.create({
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const createParams: any = {
     model,
     max_tokens: 8192,
     system: SPECIALIST_PROMPTS[specialist],
@@ -91,9 +169,43 @@ async function runSingleSpecialist(
       role: 'user',
       content: `Analyze the following patient data:\n\n${JSON.stringify(intakeData, null, 2)}`,
     }],
-  });
+  };
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  if (options?.webSearchEnabled) {
+    createParams.tools = [WEB_SEARCH_TOOL];
+  }
+
+  const response = await anthropic.messages.create(createParams);
+
+  // Extract text and citations from response content blocks
+  let text = '';
+  const citations: WebSearchCitation[] = [];
+
+  for (const block of response.content) {
+    if (block.type === 'text') {
+      text += block.text;
+    } else if (block.type === 'server_tool_use' && block.name === 'web_search') {
+      // Fire search callback with the query
+      const input = block.input as { query?: string };
+      if (options?.onSearch && input?.query) {
+        options.onSearch(specialist, input.query);
+      }
+    } else if (block.type === 'web_search_tool_result') {
+      // Extract citations from search results
+      const content = (block as unknown as { content: Array<{ type: string; url?: string; title?: string; page_age?: string }> }).content;
+      if (Array.isArray(content)) {
+        for (const result of content) {
+          if (result.type === 'web_search_result' && result.url && result.title) {
+            citations.push({
+              title: result.title,
+              url: result.url,
+              page_age: result.page_age,
+            });
+          }
+        }
+      }
+    }
+  }
 
   const jsonStr = extractJSON(text);
   if (!jsonStr) {
@@ -108,7 +220,15 @@ async function runSingleSpecialist(
     console.error(`[orchestrator] ${specialist} JSON parse error:`, (e as Error).message, 'First 200 chars:', jsonStr.slice(0, 200));
     throw new Error(`Failed to parse ${specialist} analysis: invalid JSON`);
   }
-  return { specialist, ...parsed } as SpecialistAnalysis;
+
+  const analysis = { specialist, ...parsed } as SpecialistAnalysis;
+
+  // Attach citations if any were found
+  if (citations.length > 0) {
+    analysis.web_search_citations = citations;
+  }
+
+  return analysis;
 }
 
 export async function runSpecialists(
@@ -146,7 +266,8 @@ export async function runSpecialists(
 export async function runSpecialistsStreaming(
   intakeData: IntakeData,
   onResult: (specialist: Specialist, analysis: SpecialistAnalysis) => void,
-  onError: (specialist: Specialist, error: string) => void
+  onError: (specialist: Specialist, error: string) => void,
+  options?: WebSearchOptions
 ): Promise<Record<string, SpecialistAnalysis>> {
   const specialists = Object.values(Specialist);
   const analyses: Record<string, SpecialistAnalysis> = {};
@@ -154,7 +275,7 @@ export async function runSpecialistsStreaming(
   await Promise.allSettled(
     specialists.map(async (s) => {
       try {
-        const analysis = await runSingleSpecialist(s, intakeData);
+        const analysis = await runSingleSpecialist(s, intakeData, options);
         analyses[s] = analysis;
         onResult(s, analysis);
       } catch (err) {
@@ -359,6 +480,132 @@ export async function runCrossConsult(
   return messages.filter(Boolean) as CrossConsultMessage[];
 }
 
+export async function runMultiRoundCrossConsult(
+  analyses: Record<string, SpecialistAnalysis>,
+  intakeData: IntakeData,
+  callbacks: {
+    onRoundStart: (round: number) => void;
+    onMessage: (round: number, msg: CrossConsultMessage) => void;
+    onRoundDone: (round: number, newQuestionsCount: number) => void;
+  },
+  maxRounds: number = 3
+): Promise<CrossConsultRound[]> {
+  const rounds: CrossConsultRound[] = [];
+
+  // Collect initial requests (same logic as runCrossConsultStreaming)
+  let pendingRequests: Array<{ from: Specialist; to: Specialist; question: string }> = [];
+
+  for (const [specialist, analysis] of Object.entries(analyses)) {
+    if (Array.isArray(analysis.cross_consults)) {
+      for (const cc of analysis.cross_consults) {
+        pendingRequests.push({ from: specialist as Specialist, to: cc.to as Specialist, question: cc.question });
+      }
+    }
+  }
+  for (const [specialist, analysis] of Object.entries(analyses)) {
+    const teamQs = Array.isArray(analysis.questions_for_team) ? analysis.questions_for_team : [];
+    for (const q of teamQs) {
+      if (typeof q !== 'string' || !q.trim()) continue;
+      const target = routeTeamQuestion(q, specialist);
+      if (target) {
+        const alreadyRouted = pendingRequests.some(
+          (r) => r.from === specialist && r.to === target && r.question === q
+        );
+        if (!alreadyRouted) {
+          pendingRequests.push({ from: specialist as Specialist, to: target, question: q });
+        }
+      }
+    }
+  }
+
+  for (let round = 1; round <= maxRounds; round++) {
+    if (pendingRequests.length === 0) break;
+
+    callbacks.onRoundStart(round);
+    const roundMessages: CrossConsultMessage[] = [];
+    const nextRequests: Array<{ from: Specialist; to: Specialist; question: string }> = [];
+
+    await Promise.allSettled(
+      pendingRequests.map(async (req) => {
+        const targetAnalysis = analyses[req.to];
+        if (!targetAnalysis) return;
+
+        const response = await anthropic.messages.create({
+          model: SONNET_MODEL,
+          max_tokens: 2048,
+          system: SPECIALIST_PROMPTS[req.to],
+          messages: [{
+            role: 'user',
+            content: `A colleague in ${req.from} asks: "${req.question}"
+
+Your previous analysis: ${JSON.stringify(targetAnalysis)}
+
+Patient data: ${JSON.stringify(intakeData)}
+
+Respond to their question concisely. Return your answer as JSON:
+{
+  "response": "your concise response text here",
+  "new_questions": [{"to": "specialist_id", "question": "follow-up question"}]
+}
+
+If you have no follow-up questions, use an empty array for new_questions.`,
+          }],
+        });
+
+        const rawText = response.content[0].type === 'text' ? response.content[0].text : '';
+
+        // Try to parse JSON response for new_questions
+        let responseText = rawText;
+        let newQuestions: Array<{ to: string; question: string }> = [];
+
+        const jsonStr = extractJSON(rawText);
+        if (jsonStr) {
+          try {
+            const parsed = JSON.parse(jsonStr);
+            if (parsed.response) responseText = parsed.response;
+            if (Array.isArray(parsed.new_questions)) {
+              newQuestions = parsed.new_questions.filter(
+                (nq: { to?: string; question?: string }) => nq.to && nq.question
+              );
+            }
+          } catch {
+            // If JSON parse fails, use raw text as response
+            responseText = rawText;
+          }
+        }
+
+        const msg: CrossConsultMessage = {
+          from: req.from,
+          to: req.to,
+          message: req.question,
+          response: responseText,
+        };
+        roundMessages.push(msg);
+        callbacks.onMessage(round, msg);
+
+        // Queue new questions for next round
+        for (const nq of newQuestions) {
+          const targetSpecialist = nq.to as Specialist;
+          if (Object.values(Specialist).includes(targetSpecialist) && targetSpecialist !== req.to) {
+            nextRequests.push({
+              from: req.to,
+              to: targetSpecialist,
+              question: nq.question,
+            });
+          }
+        }
+      })
+    );
+
+    rounds.push({ round, messages: roundMessages });
+    callbacks.onRoundDone(round, nextRequests.length);
+
+    pendingRequests = nextRequests;
+  }
+
+  return rounds;
+}
+
 export async function runAdditionalData(
   answers: Record<string, string | null>,
   previousAnalyses: Record<string, SpecialistAnalysis>,
@@ -409,11 +656,58 @@ export async function runAdditionalData(
   return analyses;
 }
 
+// Condense specialist analysis to essential fields for synthesis prompt
+function condenseSynthesisInput(
+  analyses: Record<string, SpecialistAnalysis>,
+  crossConsults: CrossConsultMessage[],
+  intakeData: IntakeData
+): { patientSummary: string; analystSummaries: string; consultNotes: string } {
+  // Compact patient data — drop raw notes, keep structured fields
+  const patientSummary = JSON.stringify({
+    demographics: intakeData.demographics,
+    chief_complaint: intakeData.chief_complaint,
+    hpi: intakeData.hpi,
+    active_problems: intakeData.active_problems,
+    medications: intakeData.medications,
+    vitals: intakeData.vitals,
+    labs: intakeData.labs,
+  });
+
+  // Compact each specialist to findings/concerns/recommendations only
+  const analystSummaries = Object.entries(analyses)
+    .map(([specialist, analysis]) => {
+      const parts = [`## ${SPECIALIST_CONFIG[specialist as Specialist]?.name ?? specialist}`];
+      if (analysis.findings?.length) parts.push(`Findings: ${analysis.findings.join('; ')}`);
+      if (analysis.concerns?.length) {
+        parts.push(`Concerns: ${analysis.concerns.map(c => `[${c.severity}] ${c.detail}`).join('; ')}`);
+      }
+      if (analysis.recommendations?.length) {
+        parts.push(`Recommendations: ${analysis.recommendations.map(r => {
+          let s = r.recommendation;
+          if (r.rationale) s += ` (${r.rationale})`;
+          return s;
+        }).join('; ')}`);
+      }
+      if (analysis.evidence_basis) parts.push(`Evidence: ${analysis.evidence_basis}`);
+      return parts.join('\n');
+    })
+    .join('\n\n');
+
+  // Compact cross-consults — just from/to/message, no metadata
+  const consultNotes = crossConsults
+    .map(cc => `${SPECIALIST_CONFIG[cc.from as Specialist]?.name ?? cc.from} → ${SPECIALIST_CONFIG[cc.to as Specialist]?.name ?? cc.to}: ${cc.message}`)
+    .join('\n');
+
+  return { patientSummary, analystSummaries, consultNotes };
+}
+
 export async function* runSynthesis(
   analyses: Record<string, SpecialistAnalysis>,
   crossConsults: CrossConsultMessage[],
   intakeData: IntakeData
 ): AsyncGenerator<string> {
+  const { patientSummary, analystSummaries, consultNotes } = condenseSynthesisInput(analyses, crossConsults, intakeData);
+
   const stream = anthropic.messages.stream({
     model: OPUS_MODEL,
     max_tokens: 8192,
@@ -423,13 +717,12 @@ export async function* runSynthesis(
       content: `SYNTHESIZE the following specialist analyses into a unified Assessment & Plan organized by problem.
 
 PATIENT DATA:
-${JSON.stringify(intakeData, null, 2)}
+${patientSummary}
 
 SPECIALIST ANALYSES:
-${JSON.stringify(analyses, null, 2)}
+${analystSummaries}
 
-CROSS-CONSULTATION NOTES:
-${JSON.stringify(crossConsults, null, 2)}
+${consultNotes ? `CROSS-CONSULTATION NOTES:\n${consultNotes}` : ''}
 
 Generate a problem-oriented A/P. For each problem:
 - List the assessment
@@ -447,4 +740,85 @@ Format as plain text suitable for pasting into Epic. Do NOT use markdown formatt
       yield event.delta.text;
     }
   }
+}
+
+export async function runSpecialistChat(
+  specialist: Specialist,
+  question: string,
+  fullContext: {
+    intakeData: IntakeData;
+    analyses: Record<string, SpecialistAnalysis>;
+    crossConsults: CrossConsultMessage[];
+    chatHistory: SpecialistChatMessage[];
+    synthesizedPlan: string;
+  }
+): Promise<{ response: string; triggeredQuestions: Array<{ to: string; question: string }> }> {
+  const config = SPECIALIST_CONFIG[specialist];
+  const model = config.model === 'opus' ? OPUS_MODEL : SONNET_MODEL;
+
+  // Build chat history context
+  const chatHistoryContext = fullContext.chatHistory
+    .map((msg) => {
+      const role = msg.role === 'user' ? 'Clinician' : `${SPECIALIST_CONFIG[msg.specialist!]?.name ?? msg.specialist}`;
+      return `${role}: ${msg.content}`;
+    })
+    .join('\n');
+
+  // Build relevant cross-consult context for this specialist
+  const relevantConsults = fullContext.crossConsults.filter(
+    (cc) => cc.from === specialist || cc.to === specialist
+  );
+
+  const userMessage = `You are being asked a follow-up question by the clinician reviewing this case.
+
+PATIENT SUMMARY:
+Demographics: ${JSON.stringify(fullContext.intakeData.demographics)}
+Chief Complaint: ${fullContext.intakeData.chief_complaint}
+HPI: ${fullContext.intakeData.hpi}
+
+YOUR PREVIOUS ANALYSIS:
+${JSON.stringify(fullContext.analyses[specialist], null, 2)}
+
+${relevantConsults.length > 0 ? `RELEVANT CROSS-CONSULTATION HISTORY:\n${JSON.stringify(relevantConsults, null, 2)}` : ''}
+
+${fullContext.synthesizedPlan ? `SYNTHESIZED PLAN SUMMARY:\n${fullContext.synthesizedPlan.slice(0, 2000)}` : ''}
+
+${chatHistoryContext ? `PREVIOUS CHAT MESSAGES:\n${chatHistoryContext}` : ''}
+
+CLINICIAN'S QUESTION:
+${question}
+
+Respond with a JSON object:
+{
+  "response": "Your detailed answer to the clinician's question",
+  "new_questions": [{"to": "specialist_enum_value", "question": "question for that specialist"}]
+}
+
+The "new_questions" array should contain questions for other specialists ONLY if the clinician's question raises cross-specialty concerns that need input from another team member. Usually this array will be empty.
+
+Respond ONLY with the JSON object.`;
+
+  const response = await anthropic.messages.create({
+    model,
+    max_tokens: 4096,
+    system: SPECIALIST_PROMPTS[specialist],
+    messages: [{ role: 'user', content: userMessage }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+
+  const jsonStr = extractJSON(text);
+  if (jsonStr) {
+    try {
+      const parsed = JSON.parse(jsonStr);
+      return {
+        response: parsed.response ?? text,
+        triggeredQuestions: Array.isArray(parsed.new_questions) ? parsed.new_questions : [],
+      };
+    } catch {
+      // Fall through to plain text response
+    }
+  }
+
+  return { response: text, triggeredQuestions: [] };
 }
