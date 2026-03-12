@@ -3,15 +3,24 @@
   "framework": "nextjs",
   "functions": {
     "app/api/analyze/route.ts": {
-      "maxDuration": 120
+      "maxDuration": 180
     },
     "app/api/cross-consult/route.ts": {
-      "maxDuration": 60
+      "maxDuration": 120
     },
     "app/api/synthesize/route.ts": {
       "maxDuration": 120
     },
     "app/api/additional-data/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/specialist-chat/route.ts": {
+      "maxDuration": 60
+    },
+    "app/api/append-notes/route.ts": {
+      "maxDuration": 120
+    },
+    "app/api/presentation/route.ts": {
       "maxDuration": 120
     }
   },
