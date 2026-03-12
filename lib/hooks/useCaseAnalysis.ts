@@ -12,6 +12,7 @@ import type {
   AnalysisStatus,
   AnalyzeSSEEvent,
   CrossConsultSSEEvent,
+  SpecialistCalculationActivity,
 } from '@/lib/types';
 import { Specialist } from '@/lib/types';
 
@@ -130,6 +131,18 @@ export function useCaseAnalysis({ dispatch, state }: UseCaseAnalysisOptions): Us
                 specialist: event.specialist,
                 query: event.query,
                 citations: [],
+                timestamp: Date.now(),
+              },
+            });
+            break;
+          case 'specialist_calculation':
+            dispatch({
+              type: 'SPECIALIST_CALCULATION',
+              activity: {
+                specialist: event.specialist,
+                code: event.code,
+                result: '',
+                success: true,
                 timestamp: Date.now(),
               },
             });

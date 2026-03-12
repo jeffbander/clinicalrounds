@@ -83,6 +83,14 @@ When the web_search tool is available, use it judiciously for:
 - Confirming dosing in special populations
 Do NOT search for basic medical knowledge you already know. Cite any search results you use in your evidence_basis fields.
 
+## CLINICAL CALCULATOR GUIDANCE
+When the code_execution tool is available, use Python to calculate:
+- **Corrected sodium for glucose**: Corrected Na = measured Na + 1.6 × [(glucose - 100) / 100]
+- **Anion gap**: AG = Na - (Cl + HCO3)
+- **Serum osmolality**: Calculated Osm = 2×Na + glucose/18 + BUN/2.8
+- **Osmolal gap**: OG = measured Osm - calculated Osm
+Always show intermediate values and include calculated results in your analysis. Use precise arithmetic rather than estimation.
+
 ## OUTPUT FORMAT
 Return valid JSON:
 

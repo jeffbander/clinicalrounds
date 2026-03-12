@@ -2,11 +2,11 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { SPECIALIST_CONFIG, Specialist } from '@/lib/types';
-import type { AnalysisStatus, SpecialistAnalysis, SpecialistSearchActivity } from '@/lib/types';
+import type { AnalysisStatus, SpecialistAnalysis, SpecialistSearchActivity, SpecialistCalculationActivity } from '@/lib/types';
 
 interface ActivityEvent {
   id: string;
-  type: 'start' | 'search' | 'complete' | 'critical';
+  type: 'start' | 'search' | 'complete' | 'critical' | 'calculation';
   specialist: Specialist;
   message: string;
   timestamp: number;
@@ -15,12 +15,13 @@ interface ActivityEvent {
 interface ActivityFeedProps {
   statuses: Record<string, AnalysisStatus>;
   searchActivities?: SpecialistSearchActivity[];
+  calculationActivities?: SpecialistCalculationActivity[];
   specialistAnalyses: Record<string, SpecialistAnalysis>;
 }
 
 const MAX_EVENTS = 50;
 
-export function ActivityFeed({ statuses, searchActivities, specialistAnalyses }: ActivityFeedProps) {
+export function ActivityFeed({ statuses, searchActivities, calculationActivities, specialistAnalyses }: ActivityFeedProps) {
   const [events, setEvents] = useState<ActivityEvent[]>([]);
   const seenRef = useRef(new Set<string>());
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -93,10 +94,30 @@ export function ActivityFeed({ statuses, searchActivities, specialistAnalyses }:
       }
     }
 
+    if (calculationActivities) {
+      for (const activity of calculationActivities) {
+        const calcKey = `calc:${activity.specialist}:${activity.timestamp}`;
+        if (!seenRef.current.has(calcKey)) {
+          seenRef.current.add(calcKey);
+          const config = SPECIALIST_CONFIG[activity.specialist as Specialist];
+          if (config) {
+            const codePreview = activity.code.split('\n')[0].slice(0, 50);
+            newEvents.push({
+              id: calcKey,
+              type: 'calculation',
+              specialist: activity.specialist as Specialist,
+              message: `${config.name} calculating: ${codePreview}${activity.code.length > 50 ? '...' : ''}`,
+              timestamp: activity.timestamp,
+            });
+          }
+        }
+      }
+    }
+
     if (newEvents.length > 0) {
       setEvents(prev => [...prev, ...newEvents].slice(-MAX_EVENTS));
     }
-  }, [statuses, searchActivities, specialistAnalyses]);
+  }, [statuses, searchActivities, calculationActivities, specialistAnalyses]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -109,6 +130,7 @@ export function ActivityFeed({ statuses, searchActivities, specialistAnalyses }:
     search: 'text-primary',
     complete: 'text-emerald-600',
     critical: 'text-destructive font-medium',
+    calculation: 'text-amber-600',
   };
 
   const dotStyles: Record<ActivityEvent['type'], string> = {
@@ -116,6 +138,7 @@ export function ActivityFeed({ statuses, searchActivities, specialistAnalyses }:
     search: 'bg-primary',
     complete: 'bg-emerald-500',
     critical: 'bg-destructive',
+    calculation: 'bg-amber-500',
   };
 
   if (events.length === 0) {

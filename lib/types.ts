@@ -14,6 +14,11 @@ export enum Specialist {
   PHARMACIST = 'pharmacist',
   ENDOCRINOLOGIST = 'endocrinologist',
   NEUROLOGIST = 'neurologist',
+  INTENSIVIST = 'intensivist',
+  ONCOLOGIST = 'oncologist',
+  PSYCHIATRIST = 'psychiatrist',
+  TOXICOLOGIST = 'toxicologist',
+  PALLIATIVE = 'palliative',
 }
 
 export const SPECIALIST_CONFIG: Record<Specialist, { name: string; icon: string; model: 'sonnet' | 'opus' }> = {
@@ -28,6 +33,11 @@ export const SPECIALIST_CONFIG: Record<Specialist, { name: string; icon: string;
   [Specialist.PHARMACIST]: { name: 'Pharmacy', icon: '\u{1F48A}', model: 'sonnet' },
   [Specialist.ENDOCRINOLOGIST]: { name: 'Endocrinology', icon: '\u{1F9EC}', model: 'sonnet' },
   [Specialist.NEUROLOGIST]: { name: 'Neurology', icon: '\u{1F9E0}', model: 'sonnet' },
+  [Specialist.INTENSIVIST]: { name: 'Critical Care', icon: '🏥', model: 'sonnet' },
+  [Specialist.ONCOLOGIST]: { name: 'Oncology', icon: '🎗️', model: 'sonnet' },
+  [Specialist.PSYCHIATRIST]: { name: 'Psychiatry', icon: '🧩', model: 'sonnet' },
+  [Specialist.TOXICOLOGIST]: { name: 'Toxicology', icon: '☠️', model: 'sonnet' },
+  [Specialist.PALLIATIVE]: { name: 'Palliative Care', icon: '🕊️', model: 'sonnet' },
 };
 
 export interface Concern {
@@ -66,6 +76,14 @@ export interface SpecialistSearchActivity {
   timestamp: number;
 }
 
+export interface SpecialistCalculationActivity {
+  specialist: string;
+  code: string;
+  result: string;
+  success: boolean;
+  timestamp: number;
+}
+
 export interface SpecialistAnalysis {
   specialist: Specialist;
   findings: string[];
@@ -76,6 +94,7 @@ export interface SpecialistAnalysis {
   cross_consults: CrossConsultRequest[];
   scoring_systems_applied: ScoringSystem[];
   web_search_citations?: WebSearchCitation[];
+  calculations_performed?: SpecialistCalculationActivity[];
 }
 
 export interface IntakeData {
@@ -227,6 +246,7 @@ export interface CaseState {
   error: string | null;
   webSearchEnabled: boolean;
   searchActivities: SpecialistSearchActivity[];
+  calculationActivities: SpecialistCalculationActivity[];
 }
 
 // API request/response types
@@ -276,6 +296,7 @@ export type AnalyzeSSEEvent =
   | { type: 'specialist_complete'; specialist: Specialist; analysis: SpecialistAnalysis; discussionMessage: DiscussionMessage }
   | { type: 'specialist_error'; specialist: Specialist; error: string }
   | { type: 'specialist_search'; specialist: string; query: string }
+  | { type: 'specialist_calculation'; specialist: string; code: string }
   | { type: 'analyze_done'; totalSpecialists: number; completedCount: number };
 
 export type CrossConsultSSEEvent =

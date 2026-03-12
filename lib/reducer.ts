@@ -6,6 +6,7 @@ import type {
   AdditionalDataResponse,
   SpecialistAnalysis,
   SpecialistSearchActivity,
+  SpecialistCalculationActivity,
   UserQuestion,
   ScoringSystem,
   AnalysisStatus,
@@ -137,7 +138,8 @@ export type Action =
   | { type: 'SET_CHATTING' }
   // Web search actions
   | { type: 'TOGGLE_WEB_SEARCH'; enabled: boolean }
-  | { type: 'SPECIALIST_SEARCH'; activity: SpecialistSearchActivity };
+  | { type: 'SPECIALIST_SEARCH'; activity: SpecialistSearchActivity }
+  | { type: 'SPECIALIST_CALCULATION'; activity: SpecialistCalculationActivity };
 
 // ─── Initial State ────────────────────────────────────────────────────────────
 
@@ -163,6 +165,7 @@ export const initialState: CaseState = {
   error: null,
   webSearchEnabled: false,
   searchActivities: [],
+  calculationActivities: [],
 };
 
 // ─── Reducer ──────────────────────────────────────────────────────────────────
@@ -177,6 +180,7 @@ export function caseReducer(state: CaseState, action: Action): CaseState {
         step: 'parsing',
         rawNotes: action.rawNotes,
         webSearchEnabled: state.webSearchEnabled,
+        calculationActivities: [],
       };
 
     case 'SET_PARSING':
@@ -469,6 +473,12 @@ export function caseReducer(state: CaseState, action: Action): CaseState {
       return {
         ...state,
         searchActivities: [...state.searchActivities, action.activity],
+      };
+
+    case 'SPECIALIST_CALCULATION':
+      return {
+        ...state,
+        calculationActivities: [...state.calculationActivities, action.activity],
       };
 
     default:

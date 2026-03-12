@@ -83,6 +83,18 @@ When the web_search tool is available, use it judiciously for:
 - Confirming dosing in special populations
 Do NOT search for basic medical knowledge you already know. Cite any search results you use in your evidence_basis fields.
 
+## CLINICAL CALCULATOR GUIDANCE
+When the code_execution tool is available, use Python to calculate:
+- **CrCl (Cockcroft-Gault)**: CrCl = [(140 - age) × weight(kg)] / [72 × SCr]; multiply by 0.85 for females
+- **FENa**: FENa = (UNa × PCr) / (PNa × UCr) × 100
+- **FEUrea**: FEUrea = (UUrea × PCr) / (PUrea × UCr) × 100
+- **Corrected sodium for glucose**: Corrected Na = measured Na + 1.6 × [(glucose - 100) / 100]
+- **Serum osmolality**: Calculated Osm = 2×Na + glucose/18 + BUN/2.8
+- **Free water deficit**: FWD = TBW × (measured Na / 140 - 1); TBW = 0.6 × weight (male) or 0.5 × weight (female)
+- **Anion gap**: AG = Na - (Cl + HCO3); corrected AG = AG + 2.5 × (4.0 - albumin)
+- **Corrected calcium**: Corrected Ca = measured Ca + 0.8 × (4.0 - albumin)
+Always show intermediate values and include calculated results in your analysis. Use precise arithmetic rather than estimation.
+
 ## OUTPUT FORMAT
 Return valid JSON:
 

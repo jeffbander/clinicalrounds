@@ -1,6 +1,6 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { Specialist, SPECIALIST_CONFIG } from './types';
-import type { IntakeData, SpecialistAnalysis, CrossConsultMessage, CrossConsultRound, TemporalIntakeData, SpecialistChatMessage, WebSearchCitation } from './types';
+import type { IntakeData, SpecialistAnalysis, CrossConsultMessage, CrossConsultRound, TemporalIntakeData, SpecialistChatMessage, WebSearchCitation, SpecialistCalculationActivity } from './types';
 import { INTAKE_PARSER_PROMPT } from './prompts/intake-parser';
 import { ATTENDING_PROMPT } from './prompts/attending';
 import { CARDIOLOGIST_PROMPT } from './prompts/cardiologist';
@@ -13,6 +13,11 @@ import { RADIOLOGIST_PROMPT } from './prompts/radiologist';
 import { PHARMACIST_PROMPT } from './prompts/pharmacist';
 import { ENDOCRINOLOGIST_PROMPT } from './prompts/endocrinologist';
 import { NEUROLOGIST_PROMPT } from './prompts/neurologist';
+import { INTENSIVIST_PROMPT } from './prompts/intensivist';
+import { ONCOLOGIST_PROMPT } from './prompts/oncologist';
+import { PSYCHIATRIST_PROMPT } from './prompts/psychiatrist';
+import { TOXICOLOGIST_PROMPT } from './prompts/toxicologist';
+import { PALLIATIVE_PROMPT } from './prompts/palliative';
 
 const anthropic = new Anthropic();
 
@@ -28,6 +33,11 @@ const SPECIALIST_PROMPTS: Record<Specialist, string> = {
   [Specialist.PHARMACIST]: PHARMACIST_PROMPT,
   [Specialist.ENDOCRINOLOGIST]: ENDOCRINOLOGIST_PROMPT,
   [Specialist.NEUROLOGIST]: NEUROLOGIST_PROMPT,
+  [Specialist.INTENSIVIST]: INTENSIVIST_PROMPT,
+  [Specialist.ONCOLOGIST]: ONCOLOGIST_PROMPT,
+  [Specialist.PSYCHIATRIST]: PSYCHIATRIST_PROMPT,
+  [Specialist.TOXICOLOGIST]: TOXICOLOGIST_PROMPT,
+  [Specialist.PALLIATIVE]: PALLIATIVE_PROMPT,
 };
 
 const SONNET_MODEL = 'claude-sonnet-4-5-20250929';
@@ -43,7 +53,13 @@ const WEB_SEARCH_TOOL = {
     'thoracic.org', 'aan.com', 'endocrine.org', 'hematology.org', 'acr.org',
     'nejm.org', 'thelancet.com', 'jamanetwork.com', 'bmj.com', 'cochranelibrary.com',
     'nice.org.uk', 'uptodate.com',
+    'aahpm.org', 'asco.org', 'nccn.org', 'aact.org',
   ],
+};
+
+const CODE_EXECUTION_TOOL = {
+  type: 'code_execution_20250522' as const,
+  name: 'code_execution' as const,
 };
 
 function extractJSON(text: string): string | null {
@@ -147,15 +163,24 @@ NEW NOTES TO PARSE AND MERGE:`;
   return parsed;
 }
 
-interface WebSearchOptions {
+interface SpecialistToolOptions {
   webSearchEnabled?: boolean;
   onSearch?: (specialist: string, query: string) => void;
+  onCalculation?: (specialist: string, code: string) => void;
+}
+
+function buildToolsArray(options?: SpecialistToolOptions): any[] {
+  const tools: any[] = [CODE_EXECUTION_TOOL];
+  if (options?.webSearchEnabled) {
+    tools.push(WEB_SEARCH_TOOL);
+  }
+  return tools;
 }
 
 async function runSingleSpecialist(
   specialist: Specialist,
   intakeData: IntakeData,
-  options?: WebSearchOptions
+  options?: SpecialistToolOptions
 ): Promise<SpecialistAnalysis> {
   const config = SPECIALIST_CONFIG[specialist];
   const model = config.model === 'opus' ? OPUS_MODEL : SONNET_MODEL;
@@ -171,15 +196,17 @@ async function runSingleSpecialist(
     }],
   };
 
-  if (options?.webSearchEnabled) {
-    createParams.tools = [WEB_SEARCH_TOOL];
-  }
-
-  const response = await anthropic.messages.create(createParams);
+  createParams.tools = buildToolsArray(options);
+  const response = await (anthropic.beta.messages.create as any)({
+    ...createParams,
+    betas: ['code-execution-2025-05-22'],
+  });
 
   // Extract text and citations from response content blocks
   let text = '';
   const citations: WebSearchCitation[] = [];
+  const calculations: SpecialistCalculationActivity[] = [];
+  const pendingCodeExecution = new Map<string, string>();
 
   for (const block of response.content) {
     if (block.type === 'text') {
@@ -204,6 +231,24 @@ async function runSingleSpecialist(
           }
         }
       }
+    } else if (block.type === 'server_tool_use' && block.name === 'code_execution') {
+      const input = block.input as { code?: string };
+      pendingCodeExecution.set(block.id, input?.code || '');
+      if (options?.onCalculation && input?.code) {
+        options.onCalculation(specialist, input.code);
+      }
+    } else if (block.type === 'code_execution_tool_result') {
+      const content = (block as any).content;
+      const code = pendingCodeExecution.get((block as any).tool_use_id) || '';
+      if (content?.type === 'code_execution_result') {
+        calculations.push({
+          specialist,
+          code,
+          result: content.stdout || '',
+          success: content.return_code === 0,
+          timestamp: Date.now(),
+        });
+      }
     }
   }
 
@@ -226,6 +271,10 @@ async function runSingleSpecialist(
   // Attach citations if any were found
   if (citations.length > 0) {
     analysis.web_search_citations = citations;
+  }
+
+  if (calculations.length > 0) {
+    analysis.calculations_performed = calculations;
   }
 
   return analysis;
@@ -267,7 +316,7 @@ export async function runSpecialistsStreaming(
   intakeData: IntakeData,
   onResult: (specialist: Specialist, analysis: SpecialistAnalysis) => void,
   onError: (specialist: Specialist, error: string) => void,
-  options?: WebSearchOptions
+  options?: SpecialistToolOptions
 ): Promise<Record<string, SpecialistAnalysis>> {
   const specialists = Object.values(Specialist);
   const analyses: Record<string, SpecialistAnalysis> = {};
@@ -405,6 +454,30 @@ const SPECIALTY_KEYWORDS: Record<string, Specialist> = {
   // Neurology
   neuro: Specialist.NEUROLOGIST, stroke: Specialist.NEUROLOGIST, seizure: Specialist.NEUROLOGIST,
   'mental status': Specialist.NEUROLOGIST, nihss: Specialist.NEUROLOGIST, gcs: Specialist.NEUROLOGIST,
+  // Critical Care
+  shock: Specialist.INTENSIVIST, vasopressor: Specialist.INTENSIVIST, norepinephrine: Specialist.INTENSIVIST,
+  sofa: Specialist.INTENSIVIST, resuscitat: Specialist.INTENSIVIST, pressors: Specialist.INTENSIVIST,
+  sedation: Specialist.INTENSIVIST, 'icu bundle': Specialist.INTENSIVIST, inotrope: Specialist.INTENSIVIST,
+  'post-arrest': Specialist.INTENSIVIST, ttm: Specialist.INTENSIVIST, prone: Specialist.INTENSIVIST,
+  // Oncology
+  cancer: Specialist.ONCOLOGIST, tumor: Specialist.ONCOLOGIST, malignancy: Specialist.ONCOLOGIST, chemo: Specialist.ONCOLOGIST,
+  neutropenic: Specialist.ONCOLOGIST, 'tumor lysis': Specialist.ONCOLOGIST, immunotherapy: Specialist.ONCOLOGIST,
+  metasta: Specialist.ONCOLOGIST, oncolog: Specialist.ONCOLOGIST, iraes: Specialist.ONCOLOGIST,
+  // Psychiatry
+  delirium: Specialist.PSYCHIATRIST, agitat: Specialist.PSYCHIATRIST, capacity: Specialist.PSYCHIATRIST,
+  psych: Specialist.PSYCHIATRIST, hallucin: Specialist.PSYCHIATRIST, suicid: Specialist.PSYCHIATRIST,
+  catatoni: Specialist.PSYCHIATRIST, ciwa: Specialist.PSYCHIATRIST, cows: Specialist.PSYCHIATRIST,
+  antipsychotic: Specialist.PSYCHIATRIST, 'substance withdrawal': Specialist.PSYCHIATRIST,
+  // Toxicology
+  overdose: Specialist.TOXICOLOGIST, poison: Specialist.TOXICOLOGIST, ingestion: Specialist.TOXICOLOGIST,
+  toxidrome: Specialist.TOXICOLOGIST, antidote: Specialist.TOXICOLOGIST, 'osmolal gap': Specialist.TOXICOLOGIST,
+  acetaminophen: Specialist.TOXICOLOGIST, 'toxic alcohol': Specialist.TOXICOLOGIST, methanol: Specialist.TOXICOLOGIST,
+  'ethylene glycol': Specialist.TOXICOLOGIST, envenomation: Specialist.TOXICOLOGIST, naloxone: Specialist.TOXICOLOGIST,
+  fomepizole: Specialist.TOXICOLOGIST,
+  // Palliative Care
+  'goals of care': Specialist.PALLIATIVE, comfort: Specialist.PALLIATIVE, hospice: Specialist.PALLIATIVE,
+  'code status': Specialist.PALLIATIVE, prognos: Specialist.PALLIATIVE, 'advance directive': Specialist.PALLIATIVE,
+  'end of life': Specialist.PALLIATIVE, dnr: Specialist.PALLIATIVE, 'withdrawal of care': Specialist.PALLIATIVE,
 };
 
 function routeTeamQuestion(question: string, fromSpecialist: string): Specialist | null {
@@ -667,7 +740,7 @@ function condenseSynthesisInput(
     demographics: intakeData.demographics,
     chief_complaint: intakeData.chief_complaint,
     hpi: intakeData.hpi,
-    active_problems: intakeData.active_problems,
+    active_problems: (intakeData as any).active_problems,
     medications: intakeData.medications,
     vitals: intakeData.vitals,
     labs: intakeData.labs,
@@ -688,7 +761,7 @@ function condenseSynthesisInput(
           return s;
         }).join('; ')}`);
       }
-      if (analysis.evidence_basis) parts.push(`Evidence: ${analysis.evidence_basis}`);
+      if ((analysis as any).evidence_basis) parts.push(`Evidence: ${(analysis as any).evidence_basis}`);
       return parts.join('\n');
     })
     .join('\n\n');

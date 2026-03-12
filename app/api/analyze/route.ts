@@ -56,6 +56,9 @@ export async function POST(request: NextRequest) {
             onSearch: (specialist, query) => {
               send({ type: 'specialist_search', specialist, query });
             },
+            onCalculation: (specialist, code) => {
+              send({ type: 'specialist_calculation', specialist, code } as any);
+            },
           }
         );
 

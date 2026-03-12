@@ -3,12 +3,13 @@
 import { SpecialistCard } from './SpecialistCard';
 import { Progress } from '@/components/ui/progress';
 import { Specialist, SPECIALIST_CONFIG } from '@/lib/types';
-import type { SpecialistAnalysis, AnalysisStatus, SpecialistSearchActivity } from '@/lib/types';
+import type { SpecialistAnalysis, AnalysisStatus, SpecialistSearchActivity, SpecialistCalculationActivity } from '@/lib/types';
 
 interface SpecialistGridProps {
   analyses: Record<string, SpecialistAnalysis>;
   statuses: Record<string, AnalysisStatus>;
   searchActivities?: SpecialistSearchActivity[];
+  calculationActivities?: SpecialistCalculationActivity[];
 }
 
 const SPECIALIST_ORDER: Specialist[] = [
@@ -23,9 +24,14 @@ const SPECIALIST_ORDER: Specialist[] = [
   Specialist.PHARMACIST,
   Specialist.ENDOCRINOLOGIST,
   Specialist.NEUROLOGIST,
+  Specialist.INTENSIVIST,
+  Specialist.ONCOLOGIST,
+  Specialist.PSYCHIATRIST,
+  Specialist.TOXICOLOGIST,
+  Specialist.PALLIATIVE,
 ];
 
-export function SpecialistGrid({ analyses, statuses, searchActivities }: SpecialistGridProps) {
+export function SpecialistGrid({ analyses, statuses, searchActivities, calculationActivities }: SpecialistGridProps) {
   const total = SPECIALIST_ORDER.length;
   const completed = SPECIALIST_ORDER.filter(
     (s) => statuses[s] === 'complete' || statuses[s] === 'critical'
@@ -74,6 +80,7 @@ export function SpecialistGrid({ analyses, statuses, searchActivities }: Special
               status={status}
               analysis={analysis}
               searchActivity={latestSearch}
+              calculationActivities={calculationActivities?.filter((a) => a.specialist === specialist)}
               specialistKey={specialist}
             />
           );

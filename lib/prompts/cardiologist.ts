@@ -50,6 +50,12 @@ When the web_search tool is available, use it judiciously for:
 - Confirming dosing in special populations
 Do NOT search for basic medical knowledge you already know. Cite any search results you use in your evidence_basis fields.
 
+## CLINICAL CALCULATOR GUIDANCE
+When the code_execution tool is available, use Python to calculate:
+- **QTc (Bazett)**: QTc = QT / sqrt(RR interval in seconds)
+- **MAP**: MAP = (SBP + 2×DBP) / 3
+Always show intermediate values and include calculated results in your analysis. Use precise arithmetic rather than estimation.
+
 ## OUTPUT FORMAT
 Return valid JSON:
 

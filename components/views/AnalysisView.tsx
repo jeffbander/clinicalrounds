@@ -6,7 +6,7 @@ import { ScoringSystemsSidebar } from '@/components/ScoringSystemsSidebar';
 import { ActivityFeed } from '@/components/ActivityFeed';
 import { TeamDiscussion } from '@/components/TeamDiscussion';
 import { Users } from 'lucide-react';
-import type { SpecialistAnalysis, AnalysisStatus, ScoringSystem, DiscussionMessage, SpecialistSearchActivity } from '@/lib/types';
+import type { SpecialistAnalysis, AnalysisStatus, ScoringSystem, DiscussionMessage, SpecialistSearchActivity, SpecialistCalculationActivity } from '@/lib/types';
 
 interface AnalysisViewProps {
   specialistAnalyses: Record<string, SpecialistAnalysis>;
@@ -15,6 +15,7 @@ interface AnalysisViewProps {
   discussionThread: DiscussionMessage[];
   isAnalyzing: boolean;
   searchActivities?: SpecialistSearchActivity[];
+  calculationActivities?: SpecialistCalculationActivity[];
 }
 
 export function AnalysisView({
@@ -24,11 +25,12 @@ export function AnalysisView({
   discussionThread,
   isAnalyzing,
   searchActivities,
+  calculationActivities,
 }: AnalysisViewProps) {
   const hasAnalyses = Object.keys(specialistAnalyses).length > 0;
   const hasStatuses = Object.keys(specialistStatuses).length > 0;
 
-  const total = 11;
+  const total = 16;
   const completed = Object.values(specialistStatuses).filter(
     s => s === 'complete' || s === 'critical'
   ).length;
@@ -70,7 +72,7 @@ export function AnalysisView({
                   <p className="text-xs text-muted-foreground mt-0.5">
                     {hasStatuses
                       ? `${completed} of ${total} complete`
-                      : '11 specialists are reviewing the case simultaneously'}
+                      : '16 specialists are reviewing the case simultaneously'}
                   </p>
                 </div>
               </div>
@@ -95,6 +97,7 @@ export function AnalysisView({
             analyses={specialistAnalyses}
             statuses={specialistStatuses}
             searchActivities={searchActivities}
+            calculationActivities={calculationActivities}
           />
         )}
 
@@ -110,6 +113,7 @@ export function AnalysisView({
             <ActivityFeed
               statuses={specialistStatuses}
               searchActivities={searchActivities}
+              calculationActivities={calculationActivities}
               specialistAnalyses={specialistAnalyses}
             />
           </div>

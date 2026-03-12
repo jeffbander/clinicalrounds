@@ -5,9 +5,9 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from '@/components/ui/collapsible';
 import { Separator } from '@/components/ui/separator';
-import { ChevronDown, AlertTriangle, CheckCircle2, Loader2, Circle, Search, ExternalLink } from 'lucide-react';
+import { ChevronDown, AlertTriangle, CheckCircle2, Loader2, Circle, Search, ExternalLink, Calculator } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { SpecialistAnalysis, AnalysisStatus, Severity, SpecialistSearchActivity } from '@/lib/types';
+import type { SpecialistAnalysis, AnalysisStatus, Severity, SpecialistSearchActivity, SpecialistCalculationActivity } from '@/lib/types';
 import { Specialist } from '@/lib/types';
 import { specialistThinkingMessages } from '@/lib/specialistThinkingMessages';
 
@@ -17,6 +17,7 @@ interface SpecialistCardProps {
   status: AnalysisStatus;
   analysis?: SpecialistAnalysis;
   searchActivity?: SpecialistSearchActivity;
+  calculationActivities?: SpecialistCalculationActivity[];
   specialistKey?: Specialist;
 }
 
@@ -34,7 +35,7 @@ const severityStyles: Record<Severity, string> = {
   low: 'bg-blue-50 text-blue-700 border-blue-200',
 };
 
-export function SpecialistCard({ name, icon, status, analysis, searchActivity, specialistKey }: SpecialistCardProps) {
+export function SpecialistCard({ name, icon, status, analysis, searchActivity, calculationActivities, specialistKey }: SpecialistCardProps) {
   const [open, setOpen] = useState(false);
   const [thinkingIndex, setThinkingIndex] = useState(0);
 
@@ -143,6 +144,12 @@ export function SpecialistCard({ name, icon, status, analysis, searchActivity, s
                     <span className="truncate">Searching: <span className="font-medium text-foreground/70">{searchActivity.query}</span></span>
                   </div>
                 )}
+                {calculationActivities && calculationActivities.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-xs text-muted-foreground bg-amber-50 rounded-md px-2.5 py-1.5 mt-2">
+                    <Calculator className="size-3 shrink-0 text-amber-600" aria-hidden="true" />
+                    <span className="truncate">Calculating: <span className="font-medium text-foreground/70">{calculationActivities[calculationActivities.length - 1].code.split('\n')[0].slice(0, 40)}</span></span>
+                  </div>
+                )}
               </div>
             )}
 
@@ -237,6 +244,31 @@ export function SpecialistCard({ name, icon, status, analysis, searchActivity, s
                         </li>
                       ))}
                     </ul>
+                  </div>
+                )}
+
+                {/* Calculations Performed */}
+                {analysis.calculations_performed && analysis.calculations_performed.length > 0 && (
+                  <div>
+                    <Separator className="mb-2" />
+                    <h4 className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                      Calculations
+                    </h4>
+                    <div className="space-y-2" role="list">
+                      {analysis.calculations_performed.map((calc, i) => (
+                        <div key={i} className="text-xs bg-amber-50/50 rounded-md px-2.5 py-2 border border-amber-100">
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <Calculator className="size-3 text-amber-600" aria-hidden="true" />
+                            <span className={cn('font-medium', calc.success ? 'text-amber-700' : 'text-destructive')}>
+                              {calc.success ? 'Computed' : 'Error'}
+                            </span>
+                          </div>
+                          {calc.result && (
+                            <pre className="text-[11px] text-muted-foreground whitespace-pre-wrap font-mono mt-1">{calc.result}</pre>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>

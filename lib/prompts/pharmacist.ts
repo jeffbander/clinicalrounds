@@ -56,6 +56,15 @@ When the web_search tool is available, use it judiciously for:
 - Confirming dosing in special populations
 Do NOT search for basic medical knowledge you already know. Cite any search results you use in your evidence_basis fields.
 
+## CLINICAL CALCULATOR GUIDANCE
+When the code_execution tool is available, use Python to calculate:
+- **CrCl (Cockcroft-Gault) for renal dosing**: CrCl = [(140 - age) × weight(kg)] / [72 × SCr]; multiply by 0.85 for females
+- **Ideal Body Weight (IBW)**: Male = 50 + 2.3 × (height_inches - 60); Female = 45.5 + 2.3 × (height_inches - 60)
+- **Adjusted Body Weight (AjBW)**: AjBW = IBW + 0.4 × (actual weight - IBW)
+- **Weight-based dosing**: dose = weight × mg_per_kg
+- **BSA (Mosteller)**: BSA = sqrt(height_cm × weight_kg / 3600)
+Always show intermediate values and include calculated results in your analysis. Use precise arithmetic rather than estimation.
+
 ## OUTPUT FORMAT
 Return valid JSON:
 

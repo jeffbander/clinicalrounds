@@ -10,3 +10,8 @@ export { RADIOLOGIST_PROMPT } from './radiologist';
 export { PHARMACIST_PROMPT } from './pharmacist';
 export { ENDOCRINOLOGIST_PROMPT } from './endocrinologist';
 export { NEUROLOGIST_PROMPT } from './neurologist';
+export { INTENSIVIST_PROMPT } from './intensivist';
+export { ONCOLOGIST_PROMPT } from './oncologist';
+export { PSYCHIATRIST_PROMPT } from './psychiatrist';
+export { TOXICOLOGIST_PROMPT } from './toxicologist';
+export { PALLIATIVE_PROMPT } from './palliative';
