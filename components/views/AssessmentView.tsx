@@ -1,11 +1,19 @@
 'use client';
 
+import { useState } from 'react';
 import { AssessmentPlan } from '@/components/AssessmentPlan';
 import { CriticalAlert } from '@/components/CriticalAlert';
 import { PostSynthesisQuestions } from '@/components/PostSynthesisQuestions';
+import { CreatePresentationModal } from '@/components/CreatePresentationModal';
 import { Button } from '@/components/ui/button';
-import { MessageCircle, Loader2 } from 'lucide-react';
-import type { UserQuestion } from '@/lib/types';
+import { MessageCircle, Loader2, Presentation } from 'lucide-react';
+import type {
+  UserQuestion,
+  IntakeData,
+  SpecialistAnalysis,
+  CrossConsultMessage,
+  ScoringSystem,
+} from '@/lib/types';
 
 interface AssessmentViewProps {
   synthesizedPlan: string;
@@ -18,6 +26,11 @@ interface AssessmentViewProps {
   // Optional: allow entering Q&A chat after complete
   isComplete?: boolean;
   onEnterChat?: () => void;
+  // Case data for presentation generation
+  intakeData?: IntakeData | null;
+  specialistAnalyses?: Record<string, SpecialistAnalysis>;
+  crossConsultMessages?: CrossConsultMessage[];
+  scoringSystems?: ScoringSystem[];
 }
 
 export function AssessmentView({
@@ -30,7 +43,15 @@ export function AssessmentView({
   isRefining,
   isComplete,
   onEnterChat,
+  intakeData,
+  specialistAnalyses,
+  crossConsultMessages,
+  scoringSystems,
 }: AssessmentViewProps) {
+  const [showPresentationModal, setShowPresentationModal] = useState(false);
+
+  const canCreatePresentation = isComplete && intakeData && specialistAnalyses && Object.keys(specialistAnalyses).length > 0;
+
   return (
     <div className="mx-auto max-w-4xl space-y-6">
       {/* Critical Alerts */}
@@ -61,14 +82,40 @@ export function AssessmentView({
         />
       )}
 
-      {/* Enter Q&A button */}
-      {isComplete && onEnterChat && (
-        <div className="flex justify-center pt-2">
-          <Button onClick={onEnterChat} variant="outline" size="lg" className="gap-2">
-            <MessageCircle className="size-4" aria-hidden="true" />
-            Ask Follow-up Questions
-          </Button>
+      {/* Action buttons */}
+      {isComplete && (onEnterChat || canCreatePresentation) && (
+        <div className="flex justify-center gap-3 pt-2">
+          {onEnterChat && (
+            <Button onClick={onEnterChat} variant="outline" size="lg" className="gap-2">
+              <MessageCircle className="size-4" aria-hidden="true" />
+              Ask Follow-up Questions
+            </Button>
+          )}
+          {canCreatePresentation && (
+            <Button
+              onClick={() => setShowPresentationModal(true)}
+              variant="outline"
+              size="lg"
+              className="gap-2"
+            >
+              <Presentation className="size-4" aria-hidden="true" />
+              Create Presentation
+            </Button>
+          )}
         </div>
+      )}
+
+      {/* Presentation Modal */}
+      {showPresentationModal && intakeData && specialistAnalyses && (
+        <CreatePresentationModal
+          intakeData={intakeData}
+          specialistAnalyses={specialistAnalyses}
+          crossConsultMessages={crossConsultMessages ?? []}
+          synthesizedPlan={synthesizedPlan}
+          criticalAlerts={criticalAlerts}
+          scoringSystems={scoringSystems ?? []}
+          onClose={() => setShowPresentationModal(false)}
+        />
       )}
     </div>
   );

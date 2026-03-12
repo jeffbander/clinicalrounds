@@ -291,6 +291,10 @@ export default function Home() {
                 isRefining={isRefining}
                 isComplete={state.step === 'complete' || state.step === 'chatting'}
                 onEnterChat={handleEnterChat}
+                intakeData={state.intakeData}
+                specialistAnalyses={state.specialistAnalyses}
+                crossConsultMessages={state.crossConsultMessages}
+                scoringSystems={state.scoringSystems}
               />
             );
           }
@@ -376,6 +380,10 @@ export default function Home() {
             onAnswerQuestion={handleAnswerQuestion}
             onRefine={handleRefineWithAnswers}
             isRefining={isRefining}
+            intakeData={state.intakeData}
+            specialistAnalyses={state.specialistAnalyses}
+            crossConsultMessages={state.crossConsultMessages}
+            scoringSystems={state.scoringSystems}
           />
         );
 
@@ -391,6 +399,10 @@ export default function Home() {
             isRefining={isRefining}
             isComplete
             onEnterChat={handleEnterChat}
+            intakeData={state.intakeData}
+            specialistAnalyses={state.specialistAnalyses}
+            crossConsultMessages={state.crossConsultMessages}
+            scoringSystems={state.scoringSystems}
           />
         );
 

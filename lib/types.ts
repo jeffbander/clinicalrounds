@@ -348,3 +348,25 @@ export interface SpecialistChatResponse {
   response: SpecialistChatMessage;
   triggeredDiscussions?: CrossConsultMessage[];
 }
+
+// ─── Presentation Types ─────────────────────────────────────────────────────
+
+export interface PresentationRequest {
+  intakeData: IntakeData;
+  specialistAnalyses: Record<string, SpecialistAnalysis>;
+  crossConsultMessages: CrossConsultMessage[];
+  synthesizedPlan: string;
+  criticalAlerts: Array<{ specialist: string; detail: string }>;
+  scoringSystems: ScoringSystem[];
+  options: {
+    type: string;
+    audience?: string;
+    focusAreas?: string[];
+  };
+}
+
+export interface PresentationResponse {
+  outline: string;
+  gammaUrl?: string;
+  generationId?: string;
+}
