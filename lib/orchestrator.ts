@@ -288,12 +288,19 @@ export async function runIntake(rawText: string): Promise<{
 
   const response = await anthropic.messages.create({
     model: SONNET_MODEL,
-    max_tokens: 8192,
+    max_tokens: 16384,
     system: INTAKE_PARSER_PROMPT,
-    messages: [{ role: 'user', content: cleaned }],
+    messages: [
+      { role: 'user', content: cleaned },
+      { role: 'assistant', content: '{' },
+    ],
   });
 
-  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const rawText2 = response.content[0].type === 'text' ? response.content[0].text : '';
+  const text = '{' + rawText2;
+  if (response.stop_reason === 'max_tokens') {
+    console.warn(`[intake] Response truncated at max_tokens (${16384}). Chart may be too large.`);
+  }
   const jsonStr = extractJSON(text);
   if (!jsonStr) {
     console.error('[intake] No JSON found in parser response. First 500 chars:', text.slice(0, 500));
