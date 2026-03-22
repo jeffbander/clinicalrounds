@@ -58,12 +58,12 @@ describe('orchestrator', () => {
         }],
       });
 
-      const result = await runIntake('Test clinical notes');
+      const { intakeData } = await runIntake('Test clinical notes');
 
-      expect(result).toBeDefined();
-      expect(result.demographics.age).toBe(68);
-      expect(result.chief_complaint).toBe('Dyspnea');
-      expect(result.raw_text).toBe('Test clinical notes');
+      expect(intakeData).toBeDefined();
+      expect(intakeData.demographics.age).toBe(68);
+      expect(intakeData.chief_complaint).toBe('Dyspnea');
+      expect(intakeData.raw_text).toBe('Test clinical notes');
     });
 
     it('should use Sonnet model for intake parsing', async () => {
@@ -97,13 +97,13 @@ describe('orchestrator', () => {
     it('should throw when response has no JSON', async () => {
       mockCreate.mockResolvedValueOnce(MOCK_CLAUDE_MALFORMED_RESPONSE);
 
-      await expect(runIntake('Notes')).rejects.toThrow('Failed to parse intake data');
+      await expect(runIntake('Notes')).rejects.toThrow('Failed to parse clinical notes');
     });
 
     it('should throw when response content is not text', async () => {
       mockCreate.mockResolvedValueOnce(MOCK_CLAUDE_EMPTY_RESPONSE);
 
-      await expect(runIntake('Notes')).rejects.toThrow('Failed to parse intake data');
+      await expect(runIntake('Notes')).rejects.toThrow('Failed to parse clinical notes');
     });
 
     it('should extract JSON from text with surrounding prose', async () => {
@@ -114,8 +114,8 @@ describe('orchestrator', () => {
         }],
       });
 
-      const result = await runIntake('Notes');
-      expect(result.demographics.age).toBe(68);
+      const { intakeData } = await runIntake('Notes');
+      expect(intakeData.demographics.age).toBe(68);
     });
 
     it('should overwrite raw_text with original input', async () => {
@@ -126,8 +126,8 @@ describe('orchestrator', () => {
         }],
       });
 
-      const result = await runIntake('original notes');
-      expect(result.raw_text).toBe('original notes');
+      const { intakeData } = await runIntake('original notes');
+      expect(intakeData.raw_text).toBe('original notes');
     });
   });
 

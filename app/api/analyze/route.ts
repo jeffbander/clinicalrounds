@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { runIntake, runSpecialistsStreaming } from '@/lib/orchestrator';
+import { runIntake, runSpecialistsStreaming, triageSpecialists } from '@/lib/orchestrator';
 import type { AnalyzeRequest, AnalyzeSSEEvent, DiscussionMessage } from '@/lib/types';
 import { Specialist, SPECIALIST_CONFIG } from '@/lib/types';
 
@@ -26,13 +26,42 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        // Step 1: Parse raw notes into structured intake data
-        const intakeData = await runIntake(body.rawNotes);
-        send({ type: 'intake_complete', intakeData });
+        // Step 1: Parse raw notes into structured intake data (with sanitization)
+        const { intakeData, sanitizationWarnings } = await runIntake(body.rawNotes);
+        send({
+          type: 'intake_complete',
+          intakeData,
+          sanitizationWarnings: sanitizationWarnings.length > 0 ? sanitizationWarnings : undefined,
+        });
 
-        // Step 2: Run all specialists in parallel, streaming results
+        // Step 2: Triage — determine which specialists are relevant
+        const allNonAttending = Object.values(Specialist).filter(s => s !== Specialist.ATTENDING);
+        let selectedSpecialists: Specialist[];
+        let skippedSpecialists: Specialist[];
+        let triageReasoning: string;
+
+        try {
+          const triage = await triageSpecialists(intakeData);
+          selectedSpecialists = triage.specialists;
+          skippedSpecialists = allNonAttending.filter(s => !selectedSpecialists.includes(s));
+          triageReasoning = triage.reasoning;
+        } catch (err) {
+          console.error('[analyze] Triage failed, running all specialists:', err);
+          selectedSpecialists = allNonAttending;
+          skippedSpecialists = [];
+          triageReasoning = 'Triage failed — running all specialists as fallback';
+        }
+
+        send({
+          type: 'triage_complete',
+          selectedSpecialists,
+          skippedSpecialists,
+          reasoning: triageReasoning,
+        });
+
+        // Step 3: Run selected specialists in parallel, streaming results
         let completedCount = 0;
-        const totalSpecialists = Object.values(Specialist).length;
+        const totalSpecialists = selectedSpecialists.length;
 
         await runSpecialistsStreaming(
           intakeData,
@@ -59,7 +88,8 @@ export async function POST(request: NextRequest) {
             onCalculation: (specialist, code) => {
               send({ type: 'specialist_calculation', specialist, code } as any);
             },
-          }
+          },
+          selectedSpecialists
         );
 
         send({ type: 'analyze_done', totalSpecialists, completedCount });

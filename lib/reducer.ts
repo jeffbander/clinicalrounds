@@ -139,7 +139,9 @@ export type Action =
   // Web search actions
   | { type: 'TOGGLE_WEB_SEARCH'; enabled: boolean }
   | { type: 'SPECIALIST_SEARCH'; activity: SpecialistSearchActivity }
-  | { type: 'SPECIALIST_CALCULATION'; activity: SpecialistCalculationActivity };
+  | { type: 'SPECIALIST_CALCULATION'; activity: SpecialistCalculationActivity }
+  // Triage actions
+  | { type: 'TRIAGE_COMPLETE'; selectedSpecialists: string[]; skippedSpecialists: string[]; reasoning: string };
 
 // ─── Initial State ────────────────────────────────────────────────────────────
 
@@ -191,6 +193,15 @@ export function caseReducer(state: CaseState, action: Action): CaseState {
 
     case 'INTAKE_COMPLETE':
       return { ...state, intakeData: action.intakeData };
+
+    case 'TRIAGE_COMPLETE': {
+      // Update specialist statuses: selected ones are 'analyzing', skipped ones are removed
+      const newStatuses: Record<string, AnalysisStatus> = {};
+      for (const s of action.selectedSpecialists) {
+        newStatuses[s] = 'analyzing';
+      }
+      return { ...state, specialistStatuses: newStatuses };
+    }
 
     case 'SPECIALIST_COMPLETE': {
       const analysis = action.analysis;

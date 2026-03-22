@@ -21,6 +21,192 @@ import { PALLIATIVE_PROMPT } from './prompts/palliative';
 
 const anthropic = new Anthropic();
 
+// ─── Chart Text Sanitization ──────────────────────────────────────────────────
+// Epic notes may contain embedded images, RTF artifacts, HTML, binary data,
+// or other non-clinical content that breaks the intake parser.
+
+function sanitizeChartText(rawText: string): { cleaned: string; warnings: string[] } {
+  const warnings: string[] = [];
+  let text = rawText;
+
+  // 1. Strip base64-encoded image data (data:image/png;base64,...)
+  const base64Pattern = /data:image\/[a-z]+;base64,[A-Za-z0-9+/=\s]{20,}/g;
+  const base64Matches = text.match(base64Pattern);
+  if (base64Matches) {
+    warnings.push(`Stripped ${base64Matches.length} embedded base64 image(s)`);
+    text = text.replace(base64Pattern, '[embedded image removed]');
+  }
+
+  // 2. Strip RTF formatting blocks
+  const rtfPattern = /\{\\rtf1[\s\S]*?\}(?:\s*\})?/g;
+  if (rtfPattern.test(text)) {
+    warnings.push('Stripped RTF formatting blocks');
+    text = text.replace(rtfPattern, '');
+  }
+
+  // 3. Strip HTML tags but preserve text content
+  const htmlTagPattern = /<\/?(?:html|head|body|div|span|p|br|table|tr|td|th|img|a|b|i|u|em|strong|font|style|script|link|meta)[^>]*>/gi;
+  if (htmlTagPattern.test(text)) {
+    warnings.push('Stripped HTML tags');
+    text = text.replace(htmlTagPattern, ' ');
+  }
+
+  // 4. Remove <style>...</style> and <script>...</script> blocks entirely
+  text = text.replace(/<style[\s\S]*?<\/style>/gi, '');
+  text = text.replace(/<script[\s\S]*?<\/script>/gi, '');
+
+  // 5. Strip image file references and placeholders
+  const imageRefPattern = /\[(?:image|img|figure|photo|scan|screenshot)[^\]]*\]/gi;
+  const imageRefMatches = text.match(imageRefPattern);
+  if (imageRefMatches) {
+    warnings.push(`Found ${imageRefMatches.length} image reference(s) — content not available for analysis`);
+  }
+
+  // 6. Strip binary / non-printable characters (keep newlines, tabs, standard ASCII + extended Latin)
+  const binaryBefore = text.length;
+  text = text.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+  const binaryStripped = binaryBefore - text.length;
+  if (binaryStripped > 0) {
+    warnings.push(`Stripped ${binaryStripped} non-printable character(s)`);
+  }
+
+  // 7. Strip common EHR artifact patterns
+  // Page break markers, form feeds, printer codes
+  text = text.replace(/\f/g, '\n');  // form feed → newline
+  text = text.replace(/[\uFEFF\u200B\u200C\u200D\uFFFE]/g, ''); // BOM & zero-width chars
+
+  // 8. Collapse excessive whitespace (>3 consecutive blank lines → 2)
+  text = text.replace(/\n{4,}/g, '\n\n\n');
+
+  // 9. Collapse excessive spaces (>10 in a row, likely table formatting)
+  text = text.replace(/ {10,}/g, '  ');
+
+  // 10. Trim and final check
+  text = text.trim();
+
+  if (text.length === 0 && rawText.length > 0) {
+    warnings.push('WARNING: All content was removed during sanitization — original text may be non-clinical');
+  }
+
+  const reductionPct = rawText.length > 0
+    ? Math.round((1 - text.length / rawText.length) * 100)
+    : 0;
+  if (reductionPct > 20) {
+    warnings.push(`Sanitization removed ${reductionPct}% of input (${rawText.length} → ${text.length} chars)`);
+  }
+
+  return { cleaned: text, warnings };
+}
+
+// ─── Specialist Triage ────────────────────────────────────────────────────────
+// After intake parsing, determine which specialists are actually relevant
+// to avoid running unnecessary agents (saves cost and time).
+
+const TRIAGE_PROMPT = `You are a clinical triage system. Given structured patient intake data, determine which medical specialists should be consulted.
+
+AVAILABLE SPECIALISTS:
+- cardiologist: Heart/cardiovascular issues, arrhythmias, heart failure, ACS, valvular disease
+- pulmonologist: Lung/respiratory, ventilation, ARDS, pneumonia, oxygen management
+- nephrologist: Kidney, electrolytes, acid-base, dialysis, AKI/CKD
+- hepatologist: Liver disease, cirrhosis, hepatitis, MELD, ascites
+- hematologist: Blood disorders, coagulopathy, anemia, transfusion, DIC, HIT
+- id_specialist: Infections, antibiotics, sepsis, cultures, antimicrobial stewardship
+- radiologist: Imaging interpretation, CT/MRI/X-ray/ultrasound findings
+- pharmacist: Medication management, drug interactions, dosing, pharmacokinetics
+- endocrinologist: Diabetes, DKA, thyroid, adrenal, glycemic management
+- neurologist: Stroke, seizures, altered mental status, neuromuscular
+- intensivist: Critical care, shock, vasopressors, ventilator management, ICU care
+- oncologist: Cancer, tumors, chemotherapy complications, tumor lysis, neutropenic fever
+- psychiatrist: Delirium, agitation, capacity, substance withdrawal, psychiatric emergencies
+- toxicologist: Overdose, poisoning, toxidromes, antidotes, toxic exposures
+- palliative: Goals of care, comfort care, hospice, code status, end-of-life, prognosis in serious illness
+
+RULES:
+1. ALWAYS include: pharmacist (every patient needs medication review)
+2. ALWAYS include: radiologist (if ANY imaging is present)
+3. Include specialists ONLY if the patient data shows relevant pathology, risk factors, or clinical questions
+4. Consider patient demographics: age, sex, acuity
+5. For young healthy patients with simple presentations, 3-5 specialists may be sufficient
+6. For complex ICU patients, 8-12 may be appropriate
+7. Do NOT include palliative unless: age >70 with serious illness, terminal diagnosis, goals of care mentioned, code status discussed, or multi-organ failure
+8. Do NOT include oncologist unless: cancer history, suspicious masses, tumor markers elevated, or active chemotherapy
+9. Do NOT include toxicologist unless: overdose, poisoning, toxic exposure, or unexplained anion/osmolal gap
+10. Do NOT include psychiatrist unless: psychiatric history, delirium, agitation, altered mental status, substance use, or capacity concerns
+
+Return ONLY a JSON object:
+{
+  "specialists": ["specialist_id", ...],
+  "reasoning": "Brief explanation of why each was selected"
+}`;
+
+export async function triageSpecialists(intakeData: IntakeData): Promise<{
+  specialists: Specialist[];
+  reasoning: string;
+}> {
+  // Build a concise summary for triage (don't send raw_text to save tokens)
+  const triageSummary = {
+    demographics: intakeData.demographics,
+    chief_complaint: intakeData.chief_complaint,
+    hpi: intakeData.hpi?.slice(0, 1000),
+    past_medical_history: intakeData.past_medical_history,
+    medications: intakeData.medications?.map(m => m.name),
+    allergies: intakeData.allergies,
+    vitals: intakeData.vitals,
+    labs_summary: intakeData.labs?.map(l => `${l.name}: ${l.value}${l.abnormal ? ' (abnormal)' : ''}`),
+    imaging_present: intakeData.imaging?.length > 0,
+    imaging_modalities: intakeData.imaging?.map(i => i.modality),
+    ecg: intakeData.ecg ? 'present' : null,
+    missing_data: intakeData.missing_data,
+  };
+
+  const response = await anthropic.messages.create({
+    model: SONNET_MODEL,
+    max_tokens: 1024,
+    system: TRIAGE_PROMPT,
+    messages: [{ role: 'user', content: JSON.stringify(triageSummary) }],
+  });
+
+  const text = response.content[0].type === 'text' ? response.content[0].text : '';
+  const jsonStr = extractJSON(text);
+
+  if (!jsonStr) {
+    console.warn('[triage] Failed to parse triage response, running all specialists');
+    return {
+      specialists: Object.values(Specialist).filter(s => s !== Specialist.ATTENDING),
+      reasoning: 'Triage parsing failed — running all specialists as fallback',
+    };
+  }
+
+  try {
+    const parsed = JSON.parse(jsonStr);
+    const validSpecialists = (parsed.specialists || [])
+      .filter((s: string) => Object.values(Specialist).includes(s as Specialist) && s !== Specialist.ATTENDING)
+      .map((s: string) => s as Specialist);
+
+    // Always ensure at least pharmacist
+    if (!validSpecialists.includes(Specialist.PHARMACIST)) {
+      validSpecialists.push(Specialist.PHARMACIST);
+    }
+
+    console.log(`[triage] Selected ${validSpecialists.length} specialists: ${validSpecialists.join(', ')}`);
+    console.log(`[triage] Reasoning: ${parsed.reasoning || 'none'}`);
+
+    return {
+      specialists: validSpecialists,
+      reasoning: parsed.reasoning || '',
+    };
+  } catch {
+    console.warn('[triage] JSON parse failed, running all specialists');
+    return {
+      specialists: Object.values(Specialist).filter(s => s !== Specialist.ATTENDING),
+      reasoning: 'Triage JSON parse failed — running all specialists as fallback',
+    };
+  }
+}
+
+// Export sanitizer for use in API routes
+export { sanitizeChartText };
+
 const SPECIALIST_PROMPTS: Record<Specialist, string> = {
   [Specialist.ATTENDING]: ATTENDING_PROMPT,
   [Specialist.CARDIOLOGIST]: CARDIOLOGIST_PROMPT,
@@ -83,23 +269,50 @@ function extractJSON(text: string): string | null {
   return null;
 }
 
-export async function runIntake(rawText: string): Promise<TemporalIntakeData> {
+export async function runIntake(rawText: string): Promise<{
+  intakeData: TemporalIntakeData;
+  sanitizationWarnings: string[];
+}> {
+  // Sanitize the raw text before sending to the parser
+  const { cleaned, warnings } = sanitizeChartText(rawText);
+
+  if (warnings.length > 0) {
+    console.log(`[intake] Sanitization warnings:\n  - ${warnings.join('\n  - ')}`);
+  }
+
+  if (cleaned.length === 0) {
+    throw new Error('Chart text is empty after sanitization. The pasted content may contain only images or non-text data.');
+  }
+
+  console.log(`[intake] Parsing ${cleaned.length} chars (original: ${rawText.length} chars)`);
+
   const response = await anthropic.messages.create({
     model: SONNET_MODEL,
     max_tokens: 8192,
     system: INTAKE_PARSER_PROMPT,
-    messages: [{ role: 'user', content: rawText }],
+    messages: [{ role: 'user', content: cleaned }],
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonStr = extractJSON(text);
-  if (!jsonStr) throw new Error('Failed to parse intake data');
+  if (!jsonStr) {
+    console.error('[intake] No JSON found in parser response. First 500 chars:', text.slice(0, 500));
+    throw new Error(
+      'Failed to parse clinical notes. The text may contain unsupported formatting. ' +
+      'Try pasting plain text from the chart instead of rich-formatted content.'
+    );
+  }
 
   let parsed: TemporalIntakeData;
   try {
     parsed = JSON.parse(jsonStr) as TemporalIntakeData;
-  } catch {
-    throw new Error('Failed to parse intake data: invalid JSON');
+  } catch (e) {
+    console.error('[intake] JSON parse error:', (e as Error).message);
+    console.error('[intake] Attempted to parse:', jsonStr.slice(0, 500));
+    throw new Error(
+      'Failed to parse structured data from clinical notes. ' +
+      'This may be caused by unusual formatting in the chart. Try removing any images or special formatting.'
+    );
   }
   parsed.raw_text = rawText;
 
@@ -108,13 +321,26 @@ export async function runIntake(rawText: string): Promise<TemporalIntakeData> {
   if (!parsed.timeline_summary) parsed.timeline_summary = '';
   if (!parsed.date_range) parsed.date_range = { start: '', end: '' };
 
-  return parsed;
+  console.log(`[intake] Successfully parsed: ${parsed.chief_complaint || 'no chief complaint'}, ` +
+    `${parsed.labs?.length || 0} labs, ${parsed.imaging?.length || 0} imaging, ` +
+    `${parsed.encounters?.length || 0} encounters`);
+
+  return { intakeData: parsed, sanitizationWarnings: warnings };
 }
 
 export async function runIncrementalIntake(
   newRawText: string,
   existingIntake: IntakeData
 ): Promise<TemporalIntakeData> {
+  // Sanitize new notes before parsing
+  const { cleaned, warnings } = sanitizeChartText(newRawText);
+  if (warnings.length > 0) {
+    console.log(`[incremental-intake] Sanitization warnings:\n  - ${warnings.join('\n  - ')}`);
+  }
+  if (cleaned.length === 0) {
+    throw new Error('Additional notes are empty after sanitization. The pasted content may contain only images or non-text data.');
+  }
+
   const incrementalPrompt = `You are parsing ADDITIONAL clinical notes to merge with an existing patient record.
 
 EXISTING PATIENT DATA (do NOT re-parse this, it is already structured):
@@ -138,18 +364,22 @@ NEW NOTES TO PARSE AND MERGE:`;
     model: SONNET_MODEL,
     max_tokens: 8192,
     system: incrementalPrompt,
-    messages: [{ role: 'user', content: newRawText }],
+    messages: [{ role: 'user', content: cleaned }],
   });
 
   const text = response.content[0].type === 'text' ? response.content[0].text : '';
   const jsonStr = extractJSON(text);
-  if (!jsonStr) throw new Error('Failed to parse incremental intake data');
+  if (!jsonStr) {
+    console.error('[incremental-intake] No JSON found. First 500 chars:', text.slice(0, 500));
+    throw new Error('Failed to parse additional notes. Try pasting plain text without images or special formatting.');
+  }
 
   let parsed: TemporalIntakeData;
   try {
     parsed = JSON.parse(jsonStr) as TemporalIntakeData;
-  } catch {
-    throw new Error('Failed to parse incremental intake data: invalid JSON');
+  } catch (e) {
+    console.error('[incremental-intake] JSON parse error:', (e as Error).message);
+    throw new Error('Failed to parse additional notes: invalid structured data.');
   }
 
   // Preserve the combined raw text
@@ -281,9 +511,10 @@ async function runSingleSpecialist(
 }
 
 export async function runSpecialists(
-  intakeData: IntakeData
+  intakeData: IntakeData,
+  selectedSpecialists?: Specialist[]
 ): Promise<Record<string, SpecialistAnalysis>> {
-  const specialists = Object.values(Specialist);
+  const specialists = selectedSpecialists || Object.values(Specialist);
 
   const results = await Promise.allSettled(
     specialists.map((s) => runSingleSpecialist(s, intakeData))
@@ -316,10 +547,14 @@ export async function runSpecialistsStreaming(
   intakeData: IntakeData,
   onResult: (specialist: Specialist, analysis: SpecialistAnalysis) => void,
   onError: (specialist: Specialist, error: string) => void,
-  options?: SpecialistToolOptions
+  options?: SpecialistToolOptions,
+  selectedSpecialists?: Specialist[]
 ): Promise<Record<string, SpecialistAnalysis>> {
-  const specialists = Object.values(Specialist);
+  // Use selected specialists if provided, otherwise run all
+  const specialists = selectedSpecialists || Object.values(Specialist);
   const analyses: Record<string, SpecialistAnalysis> = {};
+
+  console.log(`[specialists] Running ${specialists.length} specialists: ${specialists.join(', ')}`);
 
   await Promise.allSettled(
     specialists.map(async (s) => {

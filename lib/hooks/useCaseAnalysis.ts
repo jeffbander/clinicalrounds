@@ -80,9 +80,12 @@ export function useCaseAnalysis({ dispatch, state }: UseCaseAnalysisOptions): Us
   const runAnalysis = useCallback(async (rawNotes: string) => {
     dispatch({ type: 'START_ANALYSIS', rawNotes });
 
+    // Initially mark all as analyzing — triage will refine this
     const allAnalyzing: Record<string, AnalysisStatus> = {};
     for (const s of Object.values(Specialist)) {
-      allAnalyzing[s] = 'analyzing';
+      if (s !== Specialist.ATTENDING) {
+        allAnalyzing[s] = 'analyzing';
+      }
     }
     dispatch({ type: 'SET_ANALYZING', statuses: allAnalyzing });
 
@@ -111,6 +114,14 @@ export function useCaseAnalysis({ dispatch, state }: UseCaseAnalysisOptions): Us
           case 'intake_complete':
             intakeData = event.intakeData;
             dispatch({ type: 'INTAKE_COMPLETE', intakeData: event.intakeData });
+            break;
+          case 'triage_complete':
+            dispatch({
+              type: 'TRIAGE_COMPLETE',
+              selectedSpecialists: event.selectedSpecialists,
+              skippedSpecialists: event.skippedSpecialists,
+              reasoning: event.reasoning,
+            });
             break;
           case 'specialist_complete':
             specialistAnalyses[event.specialist] = event.analysis;
