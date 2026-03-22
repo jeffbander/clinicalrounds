@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { runIncrementalIntake, runSpecialistsStreaming } from '@/lib/orchestrator';
+import { runIncrementalIntake, runSpecialistsStreaming, triageSpecialists } from '@/lib/orchestrator';
 import type { AppendNotesRequest, DiscussionMessage, TemporalIntakeData } from '@/lib/types';
 import { Specialist, SPECIALIST_CONFIG } from '@/lib/types';
 
@@ -38,9 +38,19 @@ export async function POST(request: NextRequest) {
         );
         send({ type: 'incremental_intake_complete', intakeData: updatedIntake });
 
-        // Step 2: Re-run specialists with updated intake data
+        // Step 2: Triage specialists based on updated intake
+        let selectedSpecialists: Specialist[];
+        try {
+          const triage = await triageSpecialists(updatedIntake);
+          selectedSpecialists = triage.specialists;
+          console.log(`[append-notes] Triage selected ${selectedSpecialists.length} specialists`);
+        } catch {
+          selectedSpecialists = Object.values(Specialist).filter(s => s !== Specialist.ATTENDING);
+        }
+
+        // Step 3: Re-run selected specialists with updated intake data
         let completedCount = 0;
-        const totalSpecialists = Object.values(Specialist).length;
+        const totalSpecialists = selectedSpecialists.length;
 
         await runSpecialistsStreaming(
           updatedIntake,
@@ -58,7 +68,9 @@ export async function POST(request: NextRequest) {
           (specialist, error) => {
             completedCount++;
             send({ type: 'specialist_error', specialist, error });
-          }
+          },
+          undefined,
+          selectedSpecialists
         );
 
         send({ type: 'append_done', totalSpecialists, completedCount });

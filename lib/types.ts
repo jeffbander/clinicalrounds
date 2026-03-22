@@ -292,7 +292,8 @@ export interface SynthesizeRequest {
 // SSE event types for streaming pipeline progress
 
 export type AnalyzeSSEEvent =
-  | { type: 'intake_complete'; intakeData: IntakeData }
+  | { type: 'intake_complete'; intakeData: IntakeData; sanitizationWarnings?: string[] }
+  | { type: 'triage_complete'; selectedSpecialists: Specialist[]; skippedSpecialists: Specialist[]; reasoning: string }
   | { type: 'specialist_complete'; specialist: Specialist; analysis: SpecialistAnalysis; discussionMessage: DiscussionMessage }
   | { type: 'specialist_error'; specialist: Specialist; error: string }
   | { type: 'specialist_search'; specialist: string; query: string }
