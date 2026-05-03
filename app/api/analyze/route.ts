@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
               send({ type: 'specialist_search', specialist, query });
             },
             onCalculation: (specialist, code) => {
-              send({ type: 'specialist_calculation', specialist, code } as any);
+              send({ type: 'specialist_calculation', specialist, code } as unknown as AnalyzeSSEEvent);
             },
           },
           selectedSpecialists

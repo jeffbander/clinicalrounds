@@ -406,8 +406,8 @@ interface SpecialistToolOptions {
   onCalculation?: (specialist: string, code: string) => void;
 }
 
-function buildToolsArray(options?: SpecialistToolOptions): any[] {
-  const tools: any[] = [CODE_EXECUTION_TOOL];
+function buildToolsArray(options?: SpecialistToolOptions): unknown[] {
+  const tools: unknown[] = [CODE_EXECUTION_TOOL];
   if (options?.webSearchEnabled) {
     tools.push(WEB_SEARCH_TOOL);
   }
@@ -434,6 +434,7 @@ async function runSingleSpecialist(
   };
 
   createParams.tools = buildToolsArray(options);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const response = await (anthropic.beta.messages.create as any)({
     ...createParams,
     betas: ['code-execution-2025-05-22'],
@@ -475,8 +476,12 @@ async function runSingleSpecialist(
         options.onCalculation(specialist, input.code);
       }
     } else if (block.type === 'code_execution_tool_result') {
-      const content = (block as any).content;
-      const code = pendingCodeExecution.get((block as any).tool_use_id) || '';
+      const result = block as unknown as {
+        content?: { type?: string; stdout?: string; return_code?: number };
+        tool_use_id?: string;
+      };
+      const content = result.content;
+      const code = pendingCodeExecution.get(result.tool_use_id ?? '') || '';
       if (content?.type === 'code_execution_result') {
         calculations.push({
           specialist,
@@ -982,7 +987,7 @@ function condenseSynthesisInput(
     demographics: intakeData.demographics,
     chief_complaint: intakeData.chief_complaint,
     hpi: intakeData.hpi,
-    active_problems: (intakeData as any).active_problems,
+    active_problems: (intakeData as { active_problems?: unknown }).active_problems,
     medications: intakeData.medications,
     vitals: intakeData.vitals,
     labs: intakeData.labs,
@@ -1003,7 +1008,8 @@ function condenseSynthesisInput(
           return s;
         }).join('; ')}`);
       }
-      if ((analysis as any).evidence_basis) parts.push(`Evidence: ${(analysis as any).evidence_basis}`);
+      const evidenceBasis = (analysis as { evidence_basis?: string }).evidence_basis;
+      if (evidenceBasis) parts.push(`Evidence: ${evidenceBasis}`);
       return parts.join('\n');
     })
     .join('\n\n');
