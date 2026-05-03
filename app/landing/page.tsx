@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Disclaimer } from "@/components/Disclaimer"
+import { APP_VERSION } from "@/lib/version"
 import Link from "next/link"
 
 const specialists = [
@@ -667,7 +668,7 @@ export default function LandingPage() {
               <span className="text-sm font-medium">ClinicalRounds</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Built by the Agentic Laboratory at Mount Sinai West.
+              Built by the Agentic Laboratory at Mount Sinai West. &nbsp;{APP_VERSION}
             </p>
           </div>
           <div className="mt-3">
