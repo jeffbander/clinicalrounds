@@ -39,6 +39,9 @@ export function AnalysisView({
 
   useEffect(() => {
     if (!isAnalyzing) return;
+    // Reset timer at the start of each analysis run. The increment below runs
+    // inside an interval callback, not synchronously, so it isn't flagged.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setElapsed(0);
     const interval = setInterval(() => {
       setElapsed(prev => prev + 1);
