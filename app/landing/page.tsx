@@ -668,7 +668,7 @@ export default function LandingPage() {
               <span className="text-sm font-medium">ClinicalRounds</span>
             </div>
             <p className="text-xs text-muted-foreground">
-              Built by the Agentic Laboratory at Mount Sinai West. &nbsp;{APP_VERSION}
+              Built by the Agentic Laboratory at Mount Sinai West. &nbsp;{APP_VERSION} 😊
             </p>
           </div>
           <div className="mt-3">
