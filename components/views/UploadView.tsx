@@ -2,7 +2,8 @@
 
 import { PasteBox } from '@/components/PasteBox';
 import { Disclaimer } from '@/components/Disclaimer';
-import { Loader2, Stethoscope, Users, Zap, Shield } from 'lucide-react';
+import { LoadingAnimation } from '@/components/LoadingAnimation';
+import { Stethoscope, Users, Zap, Shield } from 'lucide-react';
 
 interface UploadViewProps {
   onSubmit: (rawNotes: string) => void;
@@ -50,15 +51,7 @@ export function UploadView({ onSubmit, isParsing, webSearchEnabled, onToggleWebS
       {/* Input Area */}
       <div className="rounded-xl border border-border/60 bg-card shadow-sm p-6">
         {isParsing ? (
-          <div className="flex flex-col items-center justify-center gap-3 py-16">
-            <div className="p-3 bg-primary/10 rounded-full">
-              <Loader2 className="size-6 animate-spin text-primary" aria-hidden="true" />
-            </div>
-            <div className="text-center">
-              <p className="text-sm font-medium">Parsing clinical notes...</p>
-              <p className="text-xs text-muted-foreground mt-1">Extracting structured data from your notes</p>
-            </div>
-          </div>
+          <LoadingAnimation />
         ) : (
           <PasteBox
             onSubmit={onSubmit}
