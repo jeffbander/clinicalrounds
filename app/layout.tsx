@@ -32,7 +32,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <footer className="border-t border-border">
             <div className="flex items-center justify-between px-4 py-2">
               <Disclaimer />
-              <span className="text-xs text-muted-foreground">{APP_VERSION}</span>
+              <span className="text-xs text-muted-foreground">{APP_VERSION} 😊</span>
             </div>
           </footer>
         </div>
