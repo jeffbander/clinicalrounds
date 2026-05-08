@@ -253,6 +253,7 @@ export default function Home() {
                 discussionThread={state.discussionThread}
                 isAnalyzing={false}
                 searchActivities={state.searchActivities}
+                parseReport={state.parseReport}
               />
             );
           }
@@ -311,6 +312,7 @@ export default function Home() {
             onSubmit={handleSubmit}
             webSearchEnabled={state.webSearchEnabled}
             onToggleWebSearch={handleToggleWebSearch}
+            parseReport={state.parseReport}
           />
         );
 
@@ -321,6 +323,7 @@ export default function Home() {
             isParsing
             webSearchEnabled={state.webSearchEnabled}
             onToggleWebSearch={handleToggleWebSearch}
+            parseReport={state.parseReport}
           />
         );
 
@@ -333,6 +336,7 @@ export default function Home() {
             discussionThread={state.discussionThread}
             isAnalyzing
             searchActivities={state.searchActivities}
+            parseReport={state.parseReport}
           />
         );
 
