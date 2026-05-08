@@ -1,6 +1,7 @@
 'use client';
 
 import { useReducer, useCallback, useState } from 'react';
+import Image from 'next/image';
 import { WorkflowNav } from '@/components/WorkflowNav';
 import { UploadView } from '@/components/views/UploadView';
 import { TimelineReviewView } from '@/components/views/TimelineReviewView';
@@ -436,6 +437,15 @@ export default function Home() {
       <header className="sticky top-0 z-50 border-b border-border/60 glass">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
+            <Image
+              src="/mount-sinai-logo.svg"
+              alt="Mount Sinai"
+              width={120}
+              height={28}
+              className="h-7 w-auto sm:h-8"
+              priority
+            />
+            <span className="h-6 w-px bg-border" aria-hidden="true" />
             <div className="p-1.5 bg-primary/10 rounded-lg">
               <Stethoscope className="size-4 text-primary" aria-hidden="true" />
             </div>
